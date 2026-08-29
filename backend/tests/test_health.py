@@ -1,0 +1,34 @@
+import pytest
+from httpx import AsyncClient, ASGITransport
+from app.main import app
+
+
+@pytest.mark.asyncio
+async def test_health_check_endpoint():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["service"] == "razorrecover-backend"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_summary_endpoint():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/dashboard/summary")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "metrics" in data["data"]
+    assert "trend" in data["data"]
+
+
+@pytest.mark.asyncio
+async def test_evaluation_metrics_endpoint():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/evaluation/metrics")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["data"]["overall_recovery_rate"] > 0
