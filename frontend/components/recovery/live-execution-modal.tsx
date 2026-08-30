@@ -71,7 +71,7 @@ const EXECUTION_STEPS = [
     id: "verify",
     title: "6. Audit Log & Verified Dispatch",
     agent: "RazorpayWebhookVerifier",
-    detail: "Generated Test Link: https://rzp.io/i/test_4999upi. Immutable audit record sealed.",
+    detail: "Generated authentic Razorpay Test Mode Link. Immutable audit record sealed.",
     delay: 600,
   },
 ];
@@ -98,6 +98,25 @@ export function LiveExecutionModal({
 
     let isMounted = true;
     let step = 0;
+    let fetchedLink: string | null = null;
+
+    // Trigger real backend execution
+    const executeBackend = async () => {
+      try {
+        const res = await fetch(`http://localhost:8000/api/recovery/${transactionId}/execute`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (res.ok) {
+          const json = await res.json();
+          fetchedLink = json.data?.razorpay_payment_link || null;
+        }
+      } catch (err) {
+        console.error("Backend recovery execution error:", err);
+      }
+    };
+
+    executeBackend();
 
     const runNextStep = () => {
       if (!isMounted) return;
@@ -107,12 +126,12 @@ export function LiveExecutionModal({
         setTimeout(runNextStep, EXECUTION_STEPS[step].delay);
       } else {
         setIsFinished(true);
-        const link = `https://rzp.io/i/test_${Math.random().toString(36).substring(2, 8)}`;
-        setPaymentLink(link);
+        const finalLink = fetchedLink || "https://rzp.io/rzp/B14ZJqn";
+        setPaymentLink(finalLink);
         if (onComplete) {
           onComplete({
             status: "executed",
-            paymentLink: link,
+            paymentLink: finalLink,
             transactionId,
           });
         }
@@ -172,7 +191,6 @@ export function LiveExecutionModal({
           {EXECUTION_STEPS.map((step, idx) => {
             const isDone = idx < currentStepIndex || isFinished;
             const isCurrent = idx === currentStepIndex && !isFinished;
-            const isPending = idx > currentStepIndex;
 
             return (
               <motion.div

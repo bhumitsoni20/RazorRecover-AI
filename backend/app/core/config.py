@@ -1,7 +1,18 @@
 import os
+from pathlib import Path
 from typing import List, Union
+from dotenv import load_dotenv
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Ensure .env is explicitly loaded from both root workspace and backend directories
+root_env = Path(__file__).resolve().parent.parent.parent.parent / ".env"
+backend_env = Path(__file__).resolve().parent.parent.parent / ".env"
+if root_env.exists():
+    load_dotenv(dotenv_path=root_env, override=True)
+if backend_env.exists():
+    load_dotenv(dotenv_path=backend_env, override=True)
+load_dotenv(override=False)
 
 
 class Settings(BaseSettings):
