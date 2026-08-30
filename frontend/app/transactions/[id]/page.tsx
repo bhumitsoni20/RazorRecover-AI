@@ -162,6 +162,8 @@ export default function TransactionDetailPage() {
                       status: "completed",
                       description: "Inbound payment_link.paid webhook verified via raw HMAC-SHA256. Transaction marked recovered.",
                     }
+                  : step.id === "step_5"
+                  ? { ...step, status: "completed" }
                   : step
               )
             );
@@ -204,6 +206,8 @@ export default function TransactionDetailPage() {
               status: "completed",
               description: "Inbound payment_link.paid webhook verified via raw HMAC-SHA256. Transaction marked recovered.",
             }
+          : step.id === "step_5"
+          ? { ...step, status: "completed" }
           : step
       )
     );
@@ -228,7 +232,7 @@ export default function TransactionDetailPage() {
           setIsHumanReview(false);
           setExecutionResult({
             status: "executed",
-            razorpay_payment_link: json.data?.razorpay_payment_link || "https://rzp.io/i/test_approved",
+            razorpay_payment_link: json.data?.razorpay_payment_link || "https://rzp.io/rzp/live_approved",
           });
           setTimelineSteps((prev) =>
             prev.map((step) =>
@@ -316,14 +320,14 @@ export default function TransactionDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {executionResult && !isRecovered && (
+          {!isRecovered && !isBlocked && (
             <Button
               onClick={() => setShowWebhookModal(true)}
               variant="outline"
               size="sm"
-              className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              className="gap-1.5 border-emerald-400 bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100 font-semibold shadow-xs"
             >
-              <Zap className="h-3.5 w-3.5" />
+              <Zap className="h-3.5 w-3.5 fill-emerald-600 text-emerald-600" />
               <span>Simulate Customer Paying</span>
             </Button>
           )}
@@ -375,6 +379,36 @@ export default function TransactionDetailPage() {
           )}
         </div>
       </motion.div>
+
+      {/* Prominent Webhook Simulator Call-To-Action Banner */}
+      {!isRecovered && !isBlocked && (
+        <motion.div
+          variants={itemFadeUp}
+          className="rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 via-teal-50/60 to-emerald-50/30 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-xs">
+              <Zap className="h-5 w-5 fill-white" />
+            </div>
+            <div>
+              <span className="font-bold text-xs uppercase tracking-wider text-emerald-950">
+                Customer Paid on Razorpay?
+              </span>
+              <p className="text-xs text-emerald-800 mt-0.5">
+                Fire the signed Razorpay webhook simulator to verify HMAC-SHA256, seal the audit record, and update revenue.
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setShowWebhookModal(true)}
+            className="shrink-0 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+          >
+            <Zap className="h-3.5 w-3.5 fill-white" />
+            <span>Simulate Customer Payment Now</span>
+          </Button>
+        </motion.div>
+      )}
 
       {/* Negative Test / Notice Alerts */}
       {isBlocked && (

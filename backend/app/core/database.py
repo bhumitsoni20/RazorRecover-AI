@@ -1,4 +1,5 @@
-from typing import AsyncGenerator
+import importlib.util
+from typing import Any, AsyncGenerator
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
     AsyncSession,
@@ -11,11 +12,9 @@ from app.core.logging import logger
 db_url = settings.DATABASE_URL
 
 # Check if asyncpg is importable; if not and postgresql is configured, fall back to SQLite aiosqlite for local development
-has_asyncpg = False
 try:
-    import asyncpg  # noqa
-    has_asyncpg = True
-except ImportError:
+    has_asyncpg = importlib.util.find_spec("asyncpg") is not None
+except Exception:
     has_asyncpg = False
 
 if db_url.startswith("postgresql://") or db_url.startswith("postgresql+asyncpg://"):
@@ -23,12 +22,12 @@ if db_url.startswith("postgresql://") or db_url.startswith("postgresql+asyncpg:/
         if db_url.startswith("postgresql://"):
             db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     else:
-        logger.warning("asyncpg module not found. Falling back to local SQLite database (sqlite+aiosqlite:///./razorrecover.db).")
-        db_url = "sqlite+aiosqlite:///./razorrecover.db"
+        logger.warning(f"asyncpg module not found. Falling back to local SQLite database ({settings.DATABASE_URL}).")
+        db_url = settings.DATABASE_URL
 elif db_url.startswith("sqlite://") and not db_url.startswith("sqlite+aiosqlite://"):
     db_url = db_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
 
-engine_kwargs = {"echo": False, "future": True}
+engine_kwargs: dict[str, Any] = {"echo": False, "future": True}
 if "sqlite" in db_url:
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 else:

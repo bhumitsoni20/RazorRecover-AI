@@ -14,6 +14,7 @@ from sqlalchemy import delete, update
 
 async def main():
     async with AsyncSessionLocal() as session:
+        # Reset txn_4999_upi
         await session.execute(
             delete(RecoveryAction).where(RecoveryAction.transaction_id == "txn_4999_upi")
         )
@@ -22,8 +23,19 @@ async def main():
             .where(Transaction.id == "txn_4999_upi")
             .values(status="failed")
         )
+
+        # Reset txn_high_value
+        await session.execute(
+            delete(RecoveryAction).where(RecoveryAction.transaction_id == "txn_high_value")
+        )
+        await session.execute(
+            update(Transaction)
+            .where(Transaction.id == "txn_high_value")
+            .values(status="failed")
+        )
+
         await session.commit()
-    print("SUCCESS: txn_4999_upi reset to failed with no old links")
+    print("SUCCESS: Reset txn_4999_upi and txn_high_value to fresh failed test state.")
 
 
 if __name__ == "__main__":

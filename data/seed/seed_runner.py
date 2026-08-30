@@ -3,13 +3,13 @@ import sys
 import os
 from datetime import datetime, timedelta
 import uuid
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 # Ensure workspace root and backend path are in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../backend")))
 
-from app.core.database import AsyncSessionLocal, init_db
+from app.core.database import AsyncSessionLocal, init_db, engine, Base
 from app.models.merchant import Merchant
 from app.models.customer import Customer
 from app.models.transaction import Transaction
@@ -21,81 +21,17 @@ from app.models.merchant_policy import MerchantPolicy
 from data.synthetic.dataset_generator import SyntheticDataGenerator, CUSTOMER_NAMES
 
 
-async def seed_database(sample_size: int = 250):
-    print(f"Initializing database tables...")
-    await init_db()
+async def seed_database(sample_size: int = 250, reset: bool = True):
+    print(f"Initializing database tables (reset={reset})...")
+    async with engine.begin() as conn:
+        if reset:
+            import app.models  # noqa
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
+        else:
+            await init_db()
 
     async with AsyncSessionLocal() as session:
-        # Check if merchant already exists
-        existing_mch = await session.execute(
-            select(Merchant).where(Merchant.id == "mch_razorpay_demo")
-        )
-        if existing_mch.scalar_one_or_none():
-            # Ensure key test transactions exist
-            existing_t2 = await session.execute(select(Transaction).where(Transaction.id == "txn_high_value"))
-            if not existing_t2.scalar_one_or_none():
-                print("Seeding missing test cases (txn_high_value, txn_retry_exceeded, txn_already_recovered)...")
-                session.add(Transaction(
-                    id="txn_high_value",
-                    merchant_id="mch_razorpay_demo",
-                    customer_id="cust_002",
-                    amount=50000.0,
-                    currency="INR",
-                    payment_method="card",
-                    payment_gateway="razorpay",
-                    bank="ICICI",
-                    status="failed",
-                    failure_reason="gateway_timeout",
-                    attempt_number=1,
-                    created_at=datetime.utcnow() - timedelta(minutes=25),
-                ))
-                session.add(Transaction(
-                    id="txn_retry_exceeded",
-                    merchant_id="mch_razorpay_demo",
-                    customer_id="cust_003",
-                    amount=2000.0,
-                    currency="INR",
-                    payment_method="upi",
-                    payment_gateway="razorpay",
-                    bank="SBI",
-                    status="failed",
-                    failure_reason="upi_timeout",
-                    attempt_number=3,
-                    created_at=datetime.utcnow() - timedelta(minutes=45),
-                ))
-                session.add(Transaction(
-                    id="txn_already_recovered",
-                    merchant_id="mch_razorpay_demo",
-                    customer_id="cust_004",
-                    amount=3499.0,
-                    currency="INR",
-                    payment_method="upi",
-                    payment_gateway="razorpay",
-                    bank="Axis",
-                    status="recovered",
-                    failure_reason="upi_timeout",
-                    attempt_number=1,
-                    created_at=datetime.utcnow() - timedelta(hours=2),
-                ))
-                session.add(RecoveryAction(
-                    id="act_already_recov_001",
-                    transaction_id="txn_already_recovered",
-                    action_type="payment_link",
-                    reason="Recovered via Razorpay Test Mode Link",
-                    confidence=0.91,
-                    policy_decision="APPROVED",
-                    status="completed",
-                    amount_recovered=3499.0,
-                    external_reference="https://rzp.io/i/test_already_recovered",
-                    created_at=datetime.utcnow() - timedelta(hours=1, minutes=58),
-                    completed_at=datetime.utcnow() - timedelta(hours=1, minutes=45),
-                ))
-                await session.commit()
-                print("Test scenarios seeded.")
-            else:
-                print("Database already seeded with demo merchant and test scenarios.")
-            return
-
         print("Creating demo merchant...")
         merchant = Merchant(
             id="mch_razorpay_demo",
@@ -219,18 +155,18 @@ async def seed_database(sample_size: int = 250):
         session.add(risk_case2)
 
         action_case2 = RecoveryAction(
-            id="act_high_val_001",
+            id="act_demo_high_val",
             transaction_id="txn_high_value",
             action_type="payment_link",
-            reason="High-value transaction exceeds ₹25,000 limit; routed to human review",
+            reason="High-value checkout failure ($50,000 > $25,000) requires human approval",
             confidence=0.88,
             policy_decision="HUMAN_APPROVAL_REQUIRED",
             status="pending",
-            created_at=datetime.utcnow() - timedelta(minutes=23),
+            created_at=datetime.utcnow() - timedelta(minutes=24),
         )
         session.add(action_case2)
 
-        # CASE 3: Retry Exceeded Transaction (₹2,000, attempt=3 -> BLOCKED)
+        # CASE 3: Retry Exceeded Transaction (attempt=3 -> BLOCKED)
         txn_case3 = Transaction(
             id="txn_retry_exceeded",
             merchant_id="mch_razorpay_demo",
@@ -248,19 +184,31 @@ async def seed_database(sample_size: int = 250):
         session.add(txn_case3)
 
         risk_case3 = RevenueRisk(
-            id="risk_demo_retry_exc",
+            id="risk_demo_retry_exceeded",
             transaction_id="txn_retry_exceeded",
             risk_type="payment_failure",
-            risk_score=0.85,
-            detected_reason="Max retries exceeded (3 > 2)",
-            recovery_probability=0.18,
-            expected_recovery=360.0,
+            risk_score=0.45,
+            detected_reason="Max retries reached (3 of 2)",
+            recovery_probability=0.35,
+            expected_recovery=700.0,
             status="detected",
             created_at=datetime.utcnow() - timedelta(minutes=45),
         )
         session.add(risk_case3)
 
-        # CASE 4: Already Recovered Transaction (₹3,499 -> RECOVERED)
+        action_case3 = RecoveryAction(
+            id="act_demo_retry_exceeded",
+            transaction_id="txn_retry_exceeded",
+            action_type="retry",
+            reason="Automated recovery blocked: Maximum retry limit (3 > 2) reached",
+            confidence=0.92,
+            policy_decision="BLOCKED",
+            status="failed",
+            created_at=datetime.utcnow() - timedelta(minutes=44),
+        )
+        session.add(action_case3)
+
+        # CASE 4: Already Recovered Transaction (status='recovered')
         txn_case4 = Transaction(
             id="txn_already_recovered",
             merchant_id="mch_razorpay_demo",
@@ -278,110 +226,115 @@ async def seed_database(sample_size: int = 250):
         )
         session.add(txn_case4)
 
+        risk_case4 = RevenueRisk(
+            id="risk_demo_already_recov",
+            transaction_id="txn_already_recovered",
+            risk_type="payment_failure",
+            risk_score=0.10,
+            detected_reason="Recovered via payment link",
+            recovery_probability=0.92,
+            expected_recovery=3219.08,
+            status="resolved",
+            created_at=datetime.utcnow() - timedelta(hours=2),
+        )
+        session.add(risk_case4)
+
         action_case4 = RecoveryAction(
-            id="act_already_recov_001",
+            id="act_demo_already_recov",
             transaction_id="txn_already_recovered",
             action_type="payment_link",
-            reason="Recovered via Razorpay Test Mode Link",
-            confidence=0.91,
+            reason="Autonomous recovery via Razorpay Test Mode Payment Link",
+            confidence=0.94,
             policy_decision="APPROVED",
             status="completed",
             amount_recovered=3499.0,
-            external_reference="https://rzp.io/i/test_already_recovered",
+            external_reference="https://rzp.io/rzp/live_recov_sample",
             created_at=datetime.utcnow() - timedelta(hours=1, minutes=58),
             completed_at=datetime.utcnow() - timedelta(hours=1, minutes=45),
         )
         session.add(action_case4)
 
-        # Generate synthetic batch
+        # Generate Synthetic Transactions
         print(f"Generating {sample_size} synthetic transactions...")
-        synthetic_txns = SyntheticDataGenerator.generate_transactions(count=sample_size)
+        synthetic_records = SyntheticDataGenerator.generate_transactions(count=sample_size)
 
-        for item in synthetic_txns:
-            cust = customer_map.get(item["customer_email"]) or list(customer_map.values())[0]
+        for record in synthetic_records:
+            # Match customer
+            cust = customer_map.get(record["customer_email"])
+            cust_id = cust.id if cust else "cust_001"
+            rec_id = record["id"]
+
             txn = Transaction(
-                id=item["id"],
+                id=rec_id,
                 merchant_id="mch_razorpay_demo",
-                customer_id=cust.id,
-                amount=item["amount"],
-                currency=item["currency"],
-                payment_method=item["payment_method"],
-                payment_gateway=item["payment_gateway"],
-                bank=item["bank"],
-                status=item["status"],
-                failure_reason=item["failure_reason"],
-                attempt_number=item["attempt_number"],
-                created_at=item["created_at"],
+                customer_id=cust_id,
+                amount=record["amount"],
+                currency=record["currency"],
+                payment_method=record["payment_method"],
+                payment_gateway="razorpay",
+                bank=record.get("bank", "HDFC"),
+                status=record["status"],
+                failure_reason=record.get("failure_reason"),
+                attempt_number=record.get("attempt_number", 1),
+                created_at=record["created_at"],
             )
             session.add(txn)
 
-            if item["status"] != "success":
+            if record["status"] in ["failed", "abandoned", "pending", "recovered"]:
                 risk = RevenueRisk(
-                    transaction_id=item["id"],
-                    risk_type="payment_failure" if item["failure_reason"] != "checkout_abandonment" else "checkout_abandonment",
-                    risk_score=item["risk_score"],
-                    detected_reason=f"Payment failure: {item['failure_reason'] or 'timeout'}",
-                    recovery_probability=item["recovery_probability"],
-                    expected_recovery=item["expected_recovery"],
-                    status="in_progress" if item["status"] == "pending" else ("recovered" if item["status"] == "recovered" else "detected"),
-                    created_at=item["created_at"],
+                    id=f"risk_{rec_id}",
+                    transaction_id=rec_id,
+                    risk_type="payment_failure" if record["status"] == "failed" else "checkout_dropoff",
+                    risk_score=record.get("risk_score", 0.2),
+                    detected_reason=f"{record['payment_method'].upper()} failure: {record.get('failure_reason', 'timeout')}",
+                    recovery_probability=record.get("recovery_probability", 0.85),
+                    expected_recovery=round(record["amount"] * record.get("recovery_probability", 0.85), 2),
+                    status="resolved" if record["status"] == "recovered" else "detected",
+                    created_at=record["created_at"],
                 )
                 session.add(risk)
 
-                if item["status"] in ["recovered", "pending"]:
+                if record["status"] == "recovered":
                     action = RecoveryAction(
-                        transaction_id=item["id"],
-                        action_type="payment_link" if item["payment_method"] == "upi" else "reminder",
-                        reason=f"Autonomous recovery for {item['failure_reason'] or 'failure'}",
+                        id=f"act_{rec_id}",
+                        transaction_id=rec_id,
+                        action_type="payment_link",
+                        reason=f"Recovered via payment link for {record.get('failure_reason', 'timeout')}",
                         confidence=0.91,
-                        policy_decision="APPROVED" if item["amount"] <= 25000 else "HUMAN_APPROVAL_REQUIRED",
-                        status="completed" if item["status"] == "recovered" else "pending",
-                        amount_recovered=item["amount"] if item["status"] == "recovered" else 0.0,
-                        created_at=item["created_at"] + timedelta(minutes=2),
-                        completed_at=item["created_at"] + timedelta(minutes=15) if item["status"] == "recovered" else None,
+                        policy_decision="APPROVED",
+                        status="completed",
+                        amount_recovered=record["amount"],
+                        created_at=record["created_at"] + timedelta(minutes=2),
+                        completed_at=record["created_at"] + timedelta(minutes=15),
                     )
                     session.add(action)
 
-        # Initial Cryptographic Hash-Chained Audit Log
+        # Initial hash chain
         now = datetime.utcnow()
-        init_id = "aud_seed_001"
-        init_prev_hash = "0" * 64
+        init_id = f"aud_genesis_{uuid.uuid4().hex[:8]}"
+        init_prev = "0" * 64
         init_hash = AuditLog.calculate_hash(
             id_str=init_id,
             transaction_id="txn_4999_upi",
-            agent_name="RevenueDetectionAgent",
-            action="detect_revenue_risk",
-            reasoning_summary="Identified ₹4,999 UPI failed transaction with high recovery probability (87%).",
+            agent_name="SystemInit",
+            action="system_genesis_initialize",
+            reasoning_summary="RazorRecover AI database initialized and hash chain sealed",
             policy_result="PASSED",
-            previous_hash=init_prev_hash,
+            previous_hash=init_prev,
             created_at_str=now.isoformat(),
         )
-
         session.add(AuditLog(
             id=init_id,
             transaction_id="txn_4999_upi",
-            agent_name="RevenueDetectionAgent",
-            actor="RevenueDetectionAgent",
-            action="detect_revenue_risk",
-            reasoning_summary="Identified ₹4,999 UPI failed transaction with high recovery probability (87%).",
+            agent_name="SystemInit",
+            actor="SystemInit",
+            action="system_genesis_initialize",
+            reasoning_summary="RazorRecover AI database initialized and hash chain sealed",
             policy_result="PASSED",
-            previous_hash=init_prev_hash,
+            previous_hash=init_prev,
             event_hash=init_hash,
             created_at=now,
         ))
 
-        session.add(AgentRun(
-            transaction_id="txn_4999_upi",
-            agent_name="RevenueDetectionAgent",
-            status="success",
-            latency_ms=42,
-            input_data={"amount": 4999.0, "reason": "upi_timeout"},
-            output_data={"risk_score": 0.13, "probability": 0.87},
-        ))
-
         await session.commit()
-        print(f"Successfully seeded database with 4 key test scenarios and {sample_size} transactions.")
-
-
-if __name__ == "__main__":
-    asyncio.run(seed_database(sample_size=200))
+        print(f"Successfully seeded database with {sample_size + 4} transactions, policies, and sealed genesis block.")

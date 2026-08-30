@@ -6,13 +6,17 @@ from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Ensure .env is explicitly loaded from both root workspace and backend directories
-root_env = Path(__file__).resolve().parent.parent.parent.parent / ".env"
+root_workspace = Path(__file__).resolve().parent.parent.parent.parent
+root_env = root_workspace / ".env"
 backend_env = Path(__file__).resolve().parent.parent.parent / ".env"
 if root_env.exists():
     load_dotenv(dotenv_path=root_env, override=True)
 if backend_env.exists():
     load_dotenv(dotenv_path=backend_env, override=True)
 load_dotenv(override=False)
+
+# Absolute path to root SQLite database
+default_db_path = (root_workspace / "razorrecover.db").as_posix()
 
 
 class Settings(BaseSettings):
@@ -22,10 +26,10 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
 
-    # Database
+    # Database: Always use absolute database path so backend and scripts share exact same DB
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        "sqlite+aiosqlite:///./razorrecover.db"
+        f"sqlite+aiosqlite:///{default_db_path}"
     )
 
     # Redis

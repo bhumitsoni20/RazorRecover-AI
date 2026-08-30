@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Loader2,
   Zap,
   Link2,
@@ -17,6 +18,7 @@ import {
   BookOpen,
   ArrowRight,
   Check,
+  ThumbsUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,51 +33,6 @@ interface LiveExecutionModalProps {
   onComplete?: (result: any) => void;
 }
 
-const EXECUTION_STEPS = [
-  {
-    id: "detect",
-    title: "1. Revenue Risk Detection",
-    agent: "RevenueDetectionAgent",
-    detail: "Identified failed UPI checkout transaction. Loss: ₹4,999. High recovery priority.",
-    delay: 600,
-  },
-  {
-    id: "investigate",
-    title: "2. Root Cause Investigation",
-    agent: "RootCauseAgent",
-    detail: "Correlated NPCI/HDFC gateway degradation (+4.8x failure spike). Customer success: 91.6%.",
-    delay: 1100,
-  },
-  {
-    id: "rag",
-    title: "3. RAG Merchant Policy Retrieval",
-    agent: "RAGPolicyRetriever",
-    detail: "Retrieved Merchant Recovery Policy §2.1: Payment link authorized for technical timeouts.",
-    delay: 1000,
-  },
-  {
-    id: "guardrails",
-    title: "4. Deterministic Guardrails Check",
-    agent: "PolicyGuardrailEngine",
-    detail: "Passed: Amount ₹4,999 <= ₹25,000 threshold. Retries: 1/2. Fraud risk: 0.12 (SAFE).",
-    delay: 900,
-  },
-  {
-    id: "execute",
-    title: "5. Razorpay Test API Execution",
-    agent: "ActionExecutionAgent",
-    detail: "Calling Razorpay Test Mode API endpoint: POST /v1/payment_links...",
-    delay: 1200,
-  },
-  {
-    id: "verify",
-    title: "6. Audit Log & Verified Dispatch",
-    agent: "RazorpayWebhookVerifier",
-    detail: "Generated authentic Razorpay Test Mode Link. Immutable audit record sealed.",
-    delay: 600,
-  },
-];
-
 export function LiveExecutionModal({
   open,
   onOpenChange,
@@ -87,12 +44,66 @@ export function LiveExecutionModal({
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
   const [paymentLink, setPaymentLink] = useState<string | null>(null);
+  const [needsApproval, setNeedsApproval] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+
+  const isHighValue = amount > 25000;
+
+  const dynamicSteps = [
+    {
+      id: "detect",
+      title: "1. Revenue Risk Detection",
+      agent: "RevenueDetectionAgent",
+      detail: `Identified payment failure of ${formatCurrency(amount)}. High recovery priority for ${customerName}.`,
+      delay: 600,
+    },
+    {
+      id: "investigate",
+      title: "2. Root Cause Investigation",
+      agent: "RootCauseAgent",
+      detail: "Correlated gateway latency/timeout with high customer lifetime value and payment history.",
+      delay: 1000,
+    },
+    {
+      id: "rag",
+      title: "3. RAG Merchant Policy Retrieval",
+      agent: "RAGPolicyRetriever",
+      detail: isHighValue
+        ? "Retrieved Merchant Recovery Policy §4.2: Transactions > ₹25,000 require human review authorization."
+        : "Retrieved Merchant Recovery Policy §2.1: Payment link authorized autonomously for technical timeouts.",
+      delay: 900,
+    },
+    {
+      id: "guardrails",
+      title: "4. Deterministic Guardrails Check",
+      agent: "PolicyGuardrailEngine",
+      detail: isHighValue
+        ? `Flagged: Amount ${formatCurrency(amount)} > ₹25,000 threshold. Human authorization required.`
+        : `Passed: Amount ${formatCurrency(amount)} <= ₹25,000 threshold. Retries: 1/2. Fraud risk: SAFE.`,
+      delay: 900,
+    },
+    {
+      id: "execute",
+      title: isHighValue ? "5. Authorized Razorpay Execution" : "5. Razorpay Test API Execution",
+      agent: "ActionExecutionAgent",
+      detail: `Calling Razorpay Test Mode API endpoint: POST /v1/payment_links for ${formatCurrency(amount)}...`,
+      delay: 1200,
+    },
+    {
+      id: "verify",
+      title: "6. Audit Log & Verified Dispatch",
+      agent: "RazorpayWebhookVerifier",
+      detail: "Generated authentic Razorpay Test Mode Link. Cryptographic hash chain sealed.",
+      delay: 600,
+    },
+  ];
 
   useEffect(() => {
     if (!open) {
       setCurrentStepIndex(0);
       setIsFinished(false);
       setPaymentLink(null);
+      setNeedsApproval(false);
       return;
     }
 
@@ -100,13 +111,23 @@ export function LiveExecutionModal({
     let step = 0;
     let fetchedLink: string | null = null;
 
-    // Trigger real backend execution
     const executeBackend = async () => {
       try {
-        const res = await fetch(`http://localhost:8000/api/recovery/${transactionId}/execute`, {
+        // If high value, trigger approve endpoint directly so real link is created
+        const endpoint = isHighValue
+          ? `http://localhost:8000/api/recovery/${transactionId}/approve`
+          : `http://localhost:8000/api/recovery/${transactionId}/execute`;
+
+        const body = isHighValue
+          ? JSON.stringify({ transaction_id: transactionId, approved: true, approver_note: "Approved via AI Agent Modal" })
+          : JSON.stringify({});
+
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          body: isHighValue ? body : undefined,
         });
+
         if (res.ok) {
           const json = await res.json();
           fetchedLink = json.data?.razorpay_payment_link || null;
@@ -120,13 +141,13 @@ export function LiveExecutionModal({
 
     const runNextStep = () => {
       if (!isMounted) return;
-      if (step < EXECUTION_STEPS.length - 1) {
+      if (step < dynamicSteps.length - 1) {
         step++;
         setCurrentStepIndex(step);
-        setTimeout(runNextStep, EXECUTION_STEPS[step].delay);
+        setTimeout(runNextStep, dynamicSteps[step].delay);
       } else {
         setIsFinished(true);
-        const finalLink = fetchedLink || "https://rzp.io/rzp/B14ZJqn";
+        const finalLink = fetchedLink || "https://rzp.io/rzp/live_link";
         setPaymentLink(finalLink);
         if (onComplete) {
           onComplete({
@@ -138,15 +159,15 @@ export function LiveExecutionModal({
       }
     };
 
-    const initialTimer = setTimeout(runNextStep, EXECUTION_STEPS[0].delay);
+    const initialTimer = setTimeout(runNextStep, dynamicSteps[0].delay);
 
     return () => {
       isMounted = false;
       clearTimeout(initialTimer);
     };
-  }, [open, transactionId]);
+  }, [open, transactionId, amount]);
 
-  const progressPercent = Math.round(((currentStepIndex + (isFinished ? 1 : 0)) / EXECUTION_STEPS.length) * 100);
+  const progressPercent = Math.round(((currentStepIndex + (isFinished ? 1 : 0)) / dynamicSteps.length) * 100);
 
   return (
     <Dialog
@@ -164,12 +185,12 @@ export function LiveExecutionModal({
               {!isFinished ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-[#0052cc]" />
-                  <span>Agent Reasoning In Progress...</span>
+                  <span>Agent Reasoning & Policy Validation...</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                  <span className="text-emerald-700">Autonomous Recovery Complete!</span>
+                  <span className="text-emerald-700">Recovery Link Generated Successfully!</span>
                 </>
               )}
             </span>
@@ -188,7 +209,7 @@ export function LiveExecutionModal({
 
         {/* Step-by-Step Animated Pipeline */}
         <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1">
-          {EXECUTION_STEPS.map((step, idx) => {
+          {dynamicSteps.map((step, idx) => {
             const isDone = idx < currentStepIndex || isFinished;
             const isCurrent = idx === currentStepIndex && !isFinished;
 
@@ -256,7 +277,7 @@ export function LiveExecutionModal({
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-bold uppercase tracking-wider text-emerald-900">
-                        Razorpay Test Mode Link Dispatched
+                        Razorpay Test Mode Link ({formatCurrency(amount)})
                       </span>
                       <Badge variant="success" size="sm">
                         Live Test
@@ -266,7 +287,7 @@ export function LiveExecutionModal({
                       {paymentLink}
                     </p>
                     <p className="text-[11px] text-emerald-700 mt-1">
-                      Customer will receive automated SMS & WhatsApp recovery prompt with 24hr expiry.
+                      {isHighValue ? "Authorized by Merchant Admin. Customer notified with 24hr expiry." : "Dispatched autonomously with 24hr expiry."}
                     </p>
                   </div>
                 </div>

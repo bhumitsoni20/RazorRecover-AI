@@ -50,6 +50,7 @@ class ApproveResponse(BaseModel):
     transaction_id: str
     action_id: str
     status: str
+    razorpay_payment_link: Optional[str] = None
     message: str
 
 

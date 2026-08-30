@@ -10,6 +10,7 @@ import {
   Loader2,
   Send,
   Zap,
+  ArrowRight,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 
@@ -80,6 +81,13 @@ export function WebhookPlaygroundModal({
     }
   };
 
+  const handleDone = () => {
+    if (onPaymentSuccess) {
+      onPaymentSuccess();
+    }
+    onOpenChange(false);
+  };
+
   return (
     <Dialog
       open={open}
@@ -128,27 +136,44 @@ export function WebhookPlaygroundModal({
         )}
 
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
           <Button
+            variant="outline"
             size="sm"
-            onClick={handleSimulatePayment}
-            disabled={loading}
-            className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+            onClick={() => onOpenChange(false)}
+            className="text-xs"
           >
-            {loading ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>Dispatching Webhook...</span>
-              </>
-            ) : (
-              <>
-                <Send className="h-3.5 w-3.5" />
-                <span>Simulate Customer Payment ({formatCurrency(amount)})</span>
-              </>
-            )}
+            Cancel
           </Button>
+
+          {result ? (
+            <Button
+              size="sm"
+              onClick={handleDone}
+              className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs"
+            >
+              <span>Done & View Recovered Transaction</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={handleSimulatePayment}
+              disabled={loading}
+              className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Processing Webhook...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="h-3.5 w-3.5" />
+                  <span>Simulate Customer Payment ({formatCurrency(amount)})</span>
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
     </Dialog>
