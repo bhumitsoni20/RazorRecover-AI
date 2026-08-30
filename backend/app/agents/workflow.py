@@ -5,13 +5,14 @@ from app.ml.recovery_model import ml_recovery_model
 from app.rag.policy_rag import policy_rag
 from app.policies.policy_engine import PolicyEngine
 from app.integrations.razorpay_service import razorpay_service
+from app.integrations.gemini_service import gemini_service
 from app.core.logging import logger
 
 
 class MultiAgentWorkflow:
     """
     Autonomous Multi-Agent Workflow Engine.
-    Coordinates Detection, Root Cause Reasoning, Policy RAG, ML Probability, Deterministic Guardrails, and Execution.
+    Coordinates Detection, Root Cause Reasoning (Google Gemini LLM), Policy RAG, ML Probability, Deterministic Guardrails, and Execution.
     """
 
     @classmethod
@@ -33,22 +34,43 @@ class MultiAgentWorkflow:
 
         # Step 1: Revenue Detection & Anomaly Check
         is_anomaly = (payment_method.lower() == "upi" and "timeout" in failure_reason.lower())
-        detected_issue = "Payment Method Degradation (UPI Spike)" if is_anomaly else f"Transaction failure: {failure_reason}"
 
-        # Step 2: Root Cause Reasoning
-        evidence = [
-            f"UPI failure rate increased 4.8x during attempt window in {bank} network",
-            f"Customer historical success rate: {int(customer_success_rate * 100)}% ({customer_name})",
-            "Zero chargeback velocity flags in past 30 days",
-            "Device fingerprint & payment telemetry verified",
-        ]
-        root_cause = "Payment Method Degradation" if is_anomaly else "Authorization Blip"
-
-        # Step 3: Policy RAG Retrieval
+        # Step 2: Policy RAG Retrieval
         rag_query = f"payment_link for {failure_reason} with amount {amount}"
         retrieved_chunks = policy_rag.retrieve(rag_query, top_k=2)
         policy_citations = [c["citation"] for c in retrieved_chunks]
         rag_evidence_text = retrieved_chunks[0]["text"] if retrieved_chunks else "Merchant Policy §2.1: Payment links allowed <= ₹25,000."
+
+        # Step 3: Root Cause Reasoning via Google Gemini AI (with fallback)
+        gemini_result = await gemini_service.analyze_failure(
+            transaction_id=transaction_id,
+            amount=amount,
+            payment_method=payment_method,
+            failure_reason=failure_reason,
+            bank=bank,
+            attempt_number=attempt_number,
+            customer_name=customer_name,
+            customer_success_rate=customer_success_rate,
+            retrieved_policy=rag_evidence_text,
+        )
+
+        if gemini_result:
+            root_cause = gemini_result.get("root_cause", "Payment Method Degradation")
+            evidence = gemini_result.get("evidence", [])
+            proposed_action = gemini_result.get("recommended_action", "payment_link")
+            strategy_confidence = float(gemini_result.get("confidence", 0.91))
+            reason_summary = gemini_result.get("reason", f"{root_cause} diagnosed by Gemini AI")
+        else:
+            root_cause = "Payment Method Degradation" if is_anomaly else "Authorization Blip"
+            evidence = [
+                f"UPI failure rate increased 4.8x during attempt window in {bank} network",
+                f"Customer historical success rate: {int(customer_success_rate * 100)}% ({customer_name})",
+                "Zero chargeback velocity flags in past 30 days",
+                "Device fingerprint & payment telemetry verified",
+            ]
+            proposed_action = "payment_link"
+            strategy_confidence = 0.91
+            reason_summary = f"{root_cause} detected; historical customer success rate {int(customer_success_rate * 100)}%"
 
         # Step 4: ML Recovery Probability Prediction
         recovery_prob, expected_recovery, model_ver = ml_recovery_model.predict(
@@ -60,11 +82,7 @@ class MultiAgentWorkflow:
             is_anomaly=is_anomaly,
         )
 
-        # Step 5: Strategy Recommendation
-        proposed_action = "payment_link"
-        strategy_confidence = 0.91
-
-        # Step 6: Deterministic Guardrails Check
+        # Step 5: Deterministic Guardrails Check
         verdict, checks, policy_reasons = PolicyEngine.evaluate(
             amount=amount,
             proposed_action=proposed_action,
@@ -73,11 +91,10 @@ class MultiAgentWorkflow:
             customer_risk_score=round(1.0 - recovery_prob * 0.9, 2),
         )
 
-        # Step 7: Action Execution (Only if APPROVED)
+        # Step 6: Action Execution (Only if APPROVED)
         execution_result = {}
         if verdict == "APPROVED":
             ref_id = f"recov_{transaction_id}_{int(time.time())}"
-            # Razorpay Test Mode API is the primary execution path
             rzp_response = await razorpay_service.create_payment_link(
                 amount=amount,
                 currency="INR",
@@ -110,7 +127,7 @@ class MultiAgentWorkflow:
             "transaction_id": transaction_id,
             "action": proposed_action,
             "confidence": strategy_confidence,
-            "reason": f"{root_cause} detected; historical customer success rate {int(customer_success_rate * 100)}%",
+            "reason": reason_summary,
             "root_cause": root_cause,
             "evidence": evidence,
             "recovery_probability": recovery_prob,
