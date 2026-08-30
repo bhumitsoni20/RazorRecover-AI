@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, Query, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -65,6 +65,16 @@ async def list_recovery_actions(
     return APIResponse(success=True, data=items)
 
 
+@router.get("/{transaction_id}/status", response_model=APIResponse[Dict[str, Any]])
+@router.get("/{transaction_id}", response_model=APIResponse[Dict[str, Any]])
+async def get_recovery_status(
+    transaction_id: str = Path(...),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await RecoveryService.get_recovery_status(db=db, transaction_id=transaction_id)
+    return APIResponse(success=True, data=result)
+
+
 @router.post("/analyze", response_model=APIResponse[AnalyzeResponse])
 @router.post("/{transaction_id}/analyze", response_model=APIResponse[AnalyzeResponse])
 async def analyze_transaction(
@@ -72,7 +82,7 @@ async def analyze_transaction(
     request: AnalyzeRequest = AnalyzeRequest(),
     db: AsyncSession = Depends(get_db),
 ):
-    target_id = transaction_id or request.transaction_id or "txn_4999_upi"
+    target_id = transaction_id or getattr(request, "transaction_id", None) or "txn_4999_upi"
     result = await RecoveryService.analyze_transaction(db=db, transaction_id=target_id)
     return APIResponse(success=True, data=result)
 
@@ -84,8 +94,8 @@ async def execute_recovery(
     request: ExecuteRequest = ExecuteRequest(),
     db: AsyncSession = Depends(get_db),
 ):
-    target_id = transaction_id or request.transaction_id or "txn_4999_upi"
-    action_type = request.action_type or "payment_link"
+    target_id = transaction_id or getattr(request, "transaction_id", None) or "txn_4999_upi"
+    action_type = getattr(request, "action_type", None) or "payment_link"
     result = await RecoveryService.execute_recovery(
         db=db,
         transaction_id=target_id,
@@ -101,7 +111,7 @@ async def approve_recovery(
     request: ApproveRequest = ApproveRequest(),
     db: AsyncSession = Depends(get_db),
 ):
-    target_id = transaction_id or request.transaction_id or "txn_4999_upi"
+    target_id = transaction_id or getattr(request, "transaction_id", None) or "txn_4999_upi"
     result = await RecoveryService.approve_action(
         db=db,
         transaction_id=target_id,

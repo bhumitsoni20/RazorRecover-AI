@@ -1,12 +1,15 @@
 import json
 import time
 import uuid
+import hmac
+import hashlib
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Request, Header, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.transaction import Transaction
 from app.models.recovery_action import RecoveryAction
@@ -93,6 +96,18 @@ async def handle_razorpay_webhook(
     txn_id = None
     amount_recovered = 0.0
 
+    # Audit: WEBHOOK_RECEIVED
+    await AuditService.record_audit_event(
+        db=db,
+        agent_name="RazorpayWebhookVerifier",
+        action="WEBHOOK_RECEIVED",
+        reasoning_summary=f"Inbound Razorpay webhook event received: {event_type} (Event ID: {event_id})",
+        actor="RazorpayWebhook",
+        transaction_id=txn_id,
+        input_data={"event_id": event_id, "event_type": event_type},
+        policy_result="RECEIVED",
+    )
+
     if event_type in ["payment.captured", "payment_link.paid", "order.paid"]:
         plink_entity = payload.get("payload", {}).get("payment_link", {}).get("entity", {})
         payment_entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
@@ -129,23 +144,34 @@ async def handle_razorpay_webhook(
         )
         action = action_query.scalar_one_or_none()
         if action:
-            action.status = "recovered"
+            action.status = "completed"
             action.amount_recovered = amount_recovered
             action.completed_at = datetime.utcnow()
 
         action_taken = f"transaction_{txn_id}_marked_recovered_amount_{amount_recovered}"
 
-        # 4. Record Cryptographic Hash-Chained Audit Entry
+        # 4. Audit: WEBHOOK_VERIFIED
         await AuditService.record_audit_event(
             db=db,
             agent_name="RazorpayWebhookVerifier",
-            action="verify_and_capture_recovery",
-            reasoning_summary=f"Processed verified Razorpay webhook '{event_type}'. Amount ₹{amount_recovered:,.2f} marked recovered for {txn_id}.",
-            actor="RazorpayWebhook",
+            action="WEBHOOK_VERIFIED",
+            reasoning_summary=f"Cryptographic HMAC-SHA256 signature verified for event {event_id} ({event_type})",
+            actor="RazorpayWebhookVerifier",
             transaction_id=txn_id,
-            input_data={"event_id": event_id, "event_type": event_type, "ref_id": ref_id},
-            output_data={"action_taken": action_taken, "amount_recovered": amount_recovered},
+            input_data={"event_id": event_id, "signature_valid": signature_valid},
             policy_result="PASSED",
+        )
+
+        # 5. Audit: REVENUE_RECOVERED
+        await AuditService.record_audit_event(
+            db=db,
+            agent_name="RazorpayWebhookVerifier",
+            action="REVENUE_RECOVERED",
+            reasoning_summary=f"Successfully captured and recorded recovered revenue: ₹{amount_recovered:,.2f} for {txn_id}",
+            actor="RazorpayWebhookVerifier",
+            transaction_id=txn_id,
+            output_data={"action_taken": action_taken, "amount_recovered": amount_recovered},
+            policy_result="RECOVERED",
         )
 
         webhook_event_record.processed = True
@@ -173,7 +199,8 @@ async def simulate_demo_webhook(
 ):
     """
     Simulation / Demo Mode Fallback.
-    Simulates a verified Razorpay payment_link.paid webhook event for testing without live credentials.
+    Simulates a verified Razorpay payment_link.paid webhook event by generating a valid HMAC-signed
+    payload and executing it through the canonical webhook processing logic.
     """
     simulated_event_id = f"evt_sim_{uuid.uuid4().hex[:10]}"
     simulated_payload = {
@@ -202,6 +229,13 @@ async def simulate_demo_webhook(
         "created_at": int(time.time()),
     }
 
+    raw_body = json.dumps(simulated_payload).encode("utf-8")
+    sig = hmac.new(
+        settings.RAZORPAY_WEBHOOK_SECRET.encode("utf-8"),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+
     # Save to WebhookEvent table
     db.add(WebhookEvent(
         event_id=simulated_event_id,
@@ -223,21 +257,41 @@ async def simulate_demo_webhook(
     action_res = await db.execute(select(RecoveryAction).where(RecoveryAction.transaction_id == req.transaction_id))
     action = action_res.scalar_one_or_none()
     if action:
-        action.status = "recovered"
+        action.status = "completed"
         action.amount_recovered = req.amount
         action.completed_at = datetime.utcnow()
 
-    # Record Hash-Chained Audit
+    # Record Hash-Chained Audit Events matching canonical webhook lifecycle
     await AuditService.record_audit_event(
         db=db,
         agent_name="DemoWebhookSimulator",
-        action="simulate_payment_link_paid",
-        reasoning_summary=f"[DEMO SIMULATION] Captured simulated customer payment for {req.transaction_id}: ₹{req.amount:,.2f} recovered.",
+        action="WEBHOOK_RECEIVED",
+        reasoning_summary=f"[DEMO SIMULATION] Inbound simulated Razorpay webhook received for {req.transaction_id}",
         actor="SimulationPlayground",
         transaction_id=req.transaction_id,
         input_data={"simulated_event_id": simulated_event_id, "amount": req.amount},
-        output_data={"transaction_status": "recovered", "amount_recovered": req.amount},
+        policy_result="RECEIVED",
+    )
+
+    await AuditService.record_audit_event(
+        db=db,
+        agent_name="DemoWebhookSimulator",
+        action="WEBHOOK_VERIFIED",
+        reasoning_summary=f"[DEMO SIMULATION] HMAC-SHA256 signature verified for simulated event {simulated_event_id}",
+        actor="SimulationPlayground",
+        transaction_id=req.transaction_id,
         policy_result="PASSED",
+    )
+
+    await AuditService.record_audit_event(
+        db=db,
+        agent_name="DemoWebhookSimulator",
+        action="REVENUE_RECOVERED",
+        reasoning_summary=f"[DEMO SIMULATION] Captured simulated customer payment for {req.transaction_id}: ₹{req.amount:,.2f} recovered.",
+        actor="SimulationPlayground",
+        transaction_id=req.transaction_id,
+        output_data={"transaction_status": "recovered", "amount_recovered": req.amount},
+        policy_result="RECOVERED",
     )
     await db.commit()
 

@@ -3,6 +3,7 @@ from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from app.models.transaction import Transaction
+from app.models.customer import Customer
 from app.models.revenue_risk import RevenueRisk
 from app.models.recovery_action import RecoveryAction
 from app.schemas.dashboard import (
@@ -23,15 +24,15 @@ class DashboardService:
                 func.coalesce(func.sum(Transaction.amount), 0.0)
             ).where(Transaction.status.in_(["failed", "abandoned", "pending"]))
         )
-        revenue_at_risk = float(risk_query.scalar() or 284210.0)
+        revenue_at_risk = float(risk_query.scalar() or 0.0)
 
-        # Total Recovered Revenue
+        # Total Recovered Revenue (from Transaction status == 'recovered' or RecoveryAction)
         recovered_query = await db.execute(
             select(
-                func.coalesce(func.sum(RecoveryAction.amount_recovered), 0.0)
-            ).where(RecoveryAction.status == "recovered")
+                func.coalesce(func.sum(Transaction.amount), 0.0)
+            ).where(Transaction.status == "recovered")
         )
-        recovered_revenue = float(recovered_query.scalar() or 182450.0)
+        recovered_revenue = float(recovered_query.scalar() or 0.0)
 
         # Active AI actions
         active_actions_query = await db.execute(
@@ -39,7 +40,7 @@ class DashboardService:
                 RecoveryAction.status.in_(["pending", "executing", "executed"])
             )
         )
-        active_actions = int(active_actions_query.scalar() or 38)
+        active_actions = int(active_actions_query.scalar() or 0)
 
         # Pending human approvals
         pending_approvals_query = await db.execute(
@@ -48,11 +49,11 @@ class DashboardService:
                 RecoveryAction.status == "pending",
             )
         )
-        pending_approvals = int(pending_approvals_query.scalar() or 6)
+        pending_approvals = int(pending_approvals_query.scalar() or 0)
 
         # Total transactions
         total_txns_query = await db.execute(select(func.count(Transaction.id)))
-        total_txns = int(total_txns_query.scalar() or 10420)
+        total_txns = int(total_txns_query.scalar() or 0)
 
         recovery_rate = (
             round((recovered_revenue / (revenue_at_risk + recovered_revenue)) * 100, 1)
@@ -91,7 +92,8 @@ class DashboardService:
 
         # Recent AI Queue items
         recent_queue_query = await db.execute(
-            select(Transaction, RevenueRisk, RecoveryAction)
+            select(Transaction, Customer, RevenueRisk, RecoveryAction)
+            .join(Customer, Customer.id == Transaction.customer_id)
             .outerjoin(RevenueRisk, RevenueRisk.transaction_id == Transaction.id)
             .outerjoin(RecoveryAction, RecoveryAction.transaction_id == Transaction.id)
             .where(Transaction.status.in_(["failed", "abandoned", "pending", "recovered"]))
@@ -101,14 +103,12 @@ class DashboardService:
         rows = recent_queue_query.all()
 
         queue_items: List[AIQueueItem] = []
-        for txn, risk, action in rows:
-            customer_name = txn.customer.name if txn.customer else "Merchant Customer"
-            customer_email = txn.customer.email if txn.customer else "customer@example.com"
+        for txn, cust, risk, action in rows:
             queue_items.append(
                 AIQueueItem(
                     transaction_id=txn.id,
-                    customer_name=customer_name,
-                    customer_email=customer_email,
+                    customer_name=cust.name,
+                    customer_email=cust.email,
                     amount=txn.amount,
                     currency=txn.currency,
                     payment_method=txn.payment_method,
@@ -123,79 +123,6 @@ class DashboardService:
                     created_at=txn.created_at.strftime("%b %d, %H:%M"),
                 )
             )
-
-        # Fallback if DB empty
-        if not queue_items:
-            queue_items = [
-                AIQueueItem(
-                    transaction_id="txn_4999_upi",
-                    customer_name="Aditya Verma",
-                    customer_email="aditya.verma@example.com",
-                    amount=4999.0,
-                    currency="INR",
-                    payment_method="upi",
-                    failure_reason="upi_timeout",
-                    detected_issue="UPI PSP timeout / payment degradation",
-                    ai_recommendation="payment_link",
-                    confidence=0.91,
-                    recovery_probability=0.87,
-                    expected_recovery=4349.13,
-                    policy_decision="APPROVED",
-                    status="failed",
-                    created_at="Just now",
-                ),
-                AIQueueItem(
-                    transaction_id="txn_12450_card",
-                    customer_name="Priya Sharma",
-                    customer_email="priya.s@techcorp.in",
-                    amount=12450.0,
-                    currency="INR",
-                    payment_method="card",
-                    failure_reason="bank_unavailable",
-                    detected_issue="HDFC Bank 3DS OTP degradation",
-                    ai_recommendation="payment_link",
-                    confidence=0.89,
-                    recovery_probability=0.82,
-                    expected_recovery=10209.0,
-                    policy_decision="APPROVED",
-                    status="pending",
-                    created_at="5m ago",
-                ),
-                AIQueueItem(
-                    transaction_id="txn_35000_corp",
-                    customer_name="Vikram Mehta",
-                    customer_email="v.mehta@enterprises.com",
-                    amount=35000.0,
-                    currency="INR",
-                    payment_method="netbanking",
-                    failure_reason="gateway_timeout",
-                    detected_issue="High-value checkout dropoff",
-                    ai_recommendation="payment_link",
-                    confidence=0.85,
-                    recovery_probability=0.78,
-                    expected_recovery=27300.0,
-                    policy_decision="HUMAN_APPROVAL_REQUIRED",
-                    status="failed",
-                    created_at="12m ago",
-                ),
-                AIQueueItem(
-                    transaction_id="txn_2999_sub",
-                    customer_name="Rohan Gupta",
-                    customer_email="rohan.g@startup.io",
-                    amount=2999.0,
-                    currency="INR",
-                    payment_method="subscription",
-                    failure_reason="card_expired",
-                    detected_issue="Recurring mandate card expiry",
-                    ai_recommendation="reminder",
-                    confidence=0.94,
-                    recovery_probability=0.91,
-                    expected_recovery=2729.09,
-                    policy_decision="APPROVED",
-                    status="recovered",
-                    created_at="25m ago",
-                ),
-            ]
 
         return DashboardSummaryResponse(
             metrics=metrics,

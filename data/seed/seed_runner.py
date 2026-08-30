@@ -31,7 +31,69 @@ async def seed_database(sample_size: int = 250):
             select(Merchant).where(Merchant.id == "mch_razorpay_demo")
         )
         if existing_mch.scalar_one_or_none():
-            print("Database already seeded with demo merchant. Skipping duplicate seed.")
+            # Ensure key test transactions exist
+            existing_t2 = await session.execute(select(Transaction).where(Transaction.id == "txn_high_value"))
+            if not existing_t2.scalar_one_or_none():
+                print("Seeding missing test cases (txn_high_value, txn_retry_exceeded, txn_already_recovered)...")
+                session.add(Transaction(
+                    id="txn_high_value",
+                    merchant_id="mch_razorpay_demo",
+                    customer_id="cust_002",
+                    amount=50000.0,
+                    currency="INR",
+                    payment_method="card",
+                    payment_gateway="razorpay",
+                    bank="ICICI",
+                    status="failed",
+                    failure_reason="gateway_timeout",
+                    attempt_number=1,
+                    created_at=datetime.utcnow() - timedelta(minutes=25),
+                ))
+                session.add(Transaction(
+                    id="txn_retry_exceeded",
+                    merchant_id="mch_razorpay_demo",
+                    customer_id="cust_003",
+                    amount=2000.0,
+                    currency="INR",
+                    payment_method="upi",
+                    payment_gateway="razorpay",
+                    bank="SBI",
+                    status="failed",
+                    failure_reason="upi_timeout",
+                    attempt_number=3,
+                    created_at=datetime.utcnow() - timedelta(minutes=45),
+                ))
+                session.add(Transaction(
+                    id="txn_already_recovered",
+                    merchant_id="mch_razorpay_demo",
+                    customer_id="cust_004",
+                    amount=3499.0,
+                    currency="INR",
+                    payment_method="upi",
+                    payment_gateway="razorpay",
+                    bank="Axis",
+                    status="recovered",
+                    failure_reason="upi_timeout",
+                    attempt_number=1,
+                    created_at=datetime.utcnow() - timedelta(hours=2),
+                ))
+                session.add(RecoveryAction(
+                    id="act_already_recov_001",
+                    transaction_id="txn_already_recovered",
+                    action_type="payment_link",
+                    reason="Recovered via Razorpay Test Mode Link",
+                    confidence=0.91,
+                    policy_decision="APPROVED",
+                    status="completed",
+                    amount_recovered=3499.0,
+                    external_reference="https://rzp.io/i/test_already_recovered",
+                    created_at=datetime.utcnow() - timedelta(hours=1, minutes=58),
+                    completed_at=datetime.utcnow() - timedelta(hours=1, minutes=45),
+                ))
+                await session.commit()
+                print("Test scenarios seeded.")
+            else:
+                print("Database already seeded with demo merchant and test scenarios.")
             return
 
         print("Creating demo merchant...")
@@ -90,8 +152,12 @@ async def seed_database(sample_size: int = 250):
 
         await session.flush()
 
-        # Primary Demo Transaction: ₹4,999 failed UPI transaction
-        primary_demo_txn = Transaction(
+        # =========================================================
+        # Specification 21: Key Test Transactions
+        # =========================================================
+
+        # CASE 1: Primary Demo Transaction (₹4,999 failed UPI -> APPROVED)
+        txn_case1 = Transaction(
             id="txn_4999_upi",
             merchant_id="mch_razorpay_demo",
             customer_id="cust_001",
@@ -107,9 +173,9 @@ async def seed_database(sample_size: int = 250):
             razorpay_order_id="order_demo_4999",
             created_at=datetime.utcnow() - timedelta(minutes=14),
         )
-        session.add(primary_demo_txn)
+        session.add(txn_case1)
 
-        primary_demo_risk = RevenueRisk(
+        risk_case1 = RevenueRisk(
             id="risk_demo_4999",
             transaction_id="txn_4999_upi",
             risk_type="payment_failure",
@@ -120,7 +186,112 @@ async def seed_database(sample_size: int = 250):
             status="detected",
             created_at=datetime.utcnow() - timedelta(minutes=14),
         )
-        session.add(primary_demo_risk)
+        session.add(risk_case1)
+
+        # CASE 2: High Value Transaction (₹50,000 -> HUMAN_APPROVAL_REQUIRED)
+        txn_case2 = Transaction(
+            id="txn_high_value",
+            merchant_id="mch_razorpay_demo",
+            customer_id="cust_002",
+            amount=50000.0,
+            currency="INR",
+            payment_method="card",
+            payment_gateway="razorpay",
+            bank="ICICI",
+            status="failed",
+            failure_reason="gateway_timeout",
+            attempt_number=1,
+            created_at=datetime.utcnow() - timedelta(minutes=25),
+        )
+        session.add(txn_case2)
+
+        risk_case2 = RevenueRisk(
+            id="risk_demo_high_val",
+            transaction_id="txn_high_value",
+            risk_type="payment_failure",
+            risk_score=0.25,
+            detected_reason="High-value gateway timeout",
+            recovery_probability=0.79,
+            expected_recovery=39500.0,
+            status="detected",
+            created_at=datetime.utcnow() - timedelta(minutes=25),
+        )
+        session.add(risk_case2)
+
+        action_case2 = RecoveryAction(
+            id="act_high_val_001",
+            transaction_id="txn_high_value",
+            action_type="payment_link",
+            reason="High-value transaction exceeds ₹25,000 limit; routed to human review",
+            confidence=0.88,
+            policy_decision="HUMAN_APPROVAL_REQUIRED",
+            status="pending",
+            created_at=datetime.utcnow() - timedelta(minutes=23),
+        )
+        session.add(action_case2)
+
+        # CASE 3: Retry Exceeded Transaction (₹2,000, attempt=3 -> BLOCKED)
+        txn_case3 = Transaction(
+            id="txn_retry_exceeded",
+            merchant_id="mch_razorpay_demo",
+            customer_id="cust_003",
+            amount=2000.0,
+            currency="INR",
+            payment_method="upi",
+            payment_gateway="razorpay",
+            bank="SBI",
+            status="failed",
+            failure_reason="upi_timeout",
+            attempt_number=3,
+            created_at=datetime.utcnow() - timedelta(minutes=45),
+        )
+        session.add(txn_case3)
+
+        risk_case3 = RevenueRisk(
+            id="risk_demo_retry_exc",
+            transaction_id="txn_retry_exceeded",
+            risk_type="payment_failure",
+            risk_score=0.85,
+            detected_reason="Max retries exceeded (3 > 2)",
+            recovery_probability=0.18,
+            expected_recovery=360.0,
+            status="detected",
+            created_at=datetime.utcnow() - timedelta(minutes=45),
+        )
+        session.add(risk_case3)
+
+        # CASE 4: Already Recovered Transaction (₹3,499 -> RECOVERED)
+        txn_case4 = Transaction(
+            id="txn_already_recovered",
+            merchant_id="mch_razorpay_demo",
+            customer_id="cust_004",
+            amount=3499.0,
+            currency="INR",
+            payment_method="upi",
+            payment_gateway="razorpay",
+            bank="Axis",
+            status="recovered",
+            failure_reason="upi_timeout",
+            attempt_number=1,
+            created_at=datetime.utcnow() - timedelta(hours=2),
+            updated_at=datetime.utcnow() - timedelta(hours=1, minutes=45),
+        )
+        session.add(txn_case4)
+
+        action_case4 = RecoveryAction(
+            id="act_already_recov_001",
+            transaction_id="txn_already_recovered",
+            action_type="payment_link",
+            reason="Recovered via Razorpay Test Mode Link",
+            confidence=0.91,
+            policy_decision="APPROVED",
+            status="completed",
+            amount_recovered=3499.0,
+            external_reference="https://rzp.io/i/test_already_recovered",
+            created_at=datetime.utcnow() - timedelta(hours=1, minutes=58),
+            completed_at=datetime.utcnow() - timedelta(hours=1, minutes=45),
+        )
+        session.add(action_case4)
 
         # Generate synthetic batch
         print(f"Generating {sample_size} synthetic transactions...")
@@ -164,14 +335,14 @@ async def seed_database(sample_size: int = 250):
                         reason=f"Autonomous recovery for {item['failure_reason'] or 'failure'}",
                         confidence=0.91,
                         policy_decision="APPROVED" if item["amount"] <= 25000 else "HUMAN_APPROVAL_REQUIRED",
-                        status="recovered" if item["status"] == "recovered" else "pending",
+                        status="completed" if item["status"] == "recovered" else "pending",
                         amount_recovered=item["amount"] if item["status"] == "recovered" else 0.0,
                         created_at=item["created_at"] + timedelta(minutes=2),
                         completed_at=item["created_at"] + timedelta(minutes=15) if item["status"] == "recovered" else None,
                     )
                     session.add(action)
 
-        # Add initial Cryptographic Hash-Chained Audit Log
+        # Initial Cryptographic Hash-Chained Audit Log
         now = datetime.utcnow()
         init_id = "aud_seed_001"
         init_prev_hash = "0" * 64
@@ -209,7 +380,7 @@ async def seed_database(sample_size: int = 250):
         ))
 
         await session.commit()
-        print(f"Successfully seeded database with merchant, policies, customers, and transactions.")
+        print(f"Successfully seeded database with 4 key test scenarios and {sample_size} transactions.")
 
 
 if __name__ == "__main__":
