@@ -6,6 +6,7 @@ from app.models.recovery_action import RecoveryAction
 from app.models.audit_log import AuditLog
 from app.models.agent_run import AgentRun
 from app.models.merchant_policy import MerchantPolicy
+from app.models.webhook_event import WebhookEvent
 
 __all__ = [
     "Merchant",
@@ -16,4 +17,5 @@ __all__ = [
     "AuditLog",
     "AgentRun",
     "MerchantPolicy",
+    "WebhookEvent",
 ]

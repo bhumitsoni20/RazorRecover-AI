@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
@@ -23,3 +23,12 @@ async def list_audit_logs(
         limit=limit,
     )
     return APIResponse(success=True, data=items)
+
+
+@router.get("/verify", response_model=APIResponse[Dict[str, Any]])
+async def verify_audit_chain(db: AsyncSession = Depends(get_db)):
+    """
+    Cryptographically verifies the append-only hash chain of all audit events.
+    """
+    result = await AuditService.verify_audit_chain(db)
+    return APIResponse(success=True, data=result)

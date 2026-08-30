@@ -8,10 +8,11 @@ from app.models.transaction import Transaction
 from app.models.customer import Customer
 from app.models.revenue_risk import RevenueRisk
 from app.models.recovery_action import RecoveryAction
-from app.models.audit_log import AuditLog
 from app.models.agent_run import AgentRun
+from app.agents.workflow import MultiAgentWorkflow
 from app.policies.policy_engine import PolicyEngine
 from app.integrations.razorpay_service import razorpay_service
+from app.services.audit_service import AuditService
 from app.schemas.recovery import (
     AnalyzeResponse,
     ExecuteResponse,
@@ -22,10 +23,15 @@ from app.core.logging import logger
 
 class RecoveryService:
     @classmethod
-    async def analyze_transaction(cls, db: AsyncSession, transaction_id: str) -> AnalyzeResponse:
+    async def analyze_transaction(
+        cls,
+        db: AsyncSession,
+        transaction_id: str,
+        is_simulation_mode: bool = False,
+    ) -> AnalyzeResponse:
         start_time = time.time()
 
-        # Fetch transaction
+        # Fetch transaction from DB
         txn_res = await db.execute(
             select(Transaction, Customer, RevenueRisk)
             .join(Customer, Customer.id == Transaction.customer_id)
@@ -37,73 +43,79 @@ class RecoveryService:
         amount = 4999.0
         failure_reason = "upi_timeout"
         customer_name = "Aditya Verma"
+        customer_email = "aditya.verma@example.com"
+        customer_phone = "+919876543210"
+        payment_method = "upi"
+        bank = "HDFC"
         attempt_number = 1
-        customer_risk = 0.12
+        customer_success_rate = 0.916
 
         if res:
-            txn, cust, risk = res
+            txn, cust, _ = res
             amount = txn.amount
             failure_reason = txn.failure_reason or "upi_timeout"
             customer_name = cust.name
+            customer_email = cust.email
+            customer_phone = cust.phone
+            payment_method = txn.payment_method
+            bank = txn.bank or "HDFC"
             attempt_number = txn.attempt_number
-            customer_risk = risk.risk_score if risk else 0.15
+            customer_success_rate = (
+                cust.successful_transactions / max(cust.total_transactions, 1)
+            )
 
-        # 1. Deterministic Policy Evaluation
-        recommended_action = "payment_link"
-        verdict, checks, reasons = PolicyEngine.evaluate(
+        # Run Multi-Agent Workflow
+        result = await MultiAgentWorkflow.run(
+            transaction_id=transaction_id,
             amount=amount,
-            proposed_action=recommended_action,
+            customer_name=customer_name,
+            customer_email=customer_email,
+            customer_phone=customer_phone,
+            payment_method=payment_method,
             failure_reason=failure_reason,
             attempt_number=attempt_number,
-            customer_risk_score=customer_risk,
+            bank=bank,
+            customer_success_rate=customer_success_rate,
+            is_simulation_mode=is_simulation_mode,
         )
 
-        recovery_probability = 0.87 if amount < 15000 else 0.76
-        expected_recovery = round(amount * recovery_probability, 2)
         latency_ms = int((time.time() - start_time) * 1000)
 
-        # Record Agent Run & Audit Log
-        agent_run = AgentRun(
+        # Record Agent Run Telemetry
+        db.add(AgentRun(
             transaction_id=transaction_id,
-            agent_name="RootCauseAndStrategyAgent",
+            agent_name="MultiAgentWorkflow",
             status="success",
-            started_at=datetime.utcnow(),
-            completed_at=datetime.utcnow(),
             latency_ms=max(latency_ms, 120),
-            input_data={"transaction_id": transaction_id, "amount": amount, "reason": failure_reason},
-            output_data={"verdict": verdict, "recommended_action": recommended_action, "probability": recovery_probability},
-        )
-        db.add(agent_run)
+            input_data={"amount": amount, "method": payment_method, "reason": failure_reason},
+            output_data={"action": result["action"], "verdict": result["policy_decision"]},
+        ))
 
-        audit_entry = AuditLog(
+        # Record Hash-Chained Audit Log
+        await AuditService.record_audit_event(
+            db=db,
+            agent_name="MultiAgentWorkflow",
+            action="investigate_and_propose_recovery",
+            reasoning_summary=f"Investigated {transaction_id}: Root Cause '{result['root_cause']}', Strategy '{result['action']}' -> Verdict '{result['policy_decision']}'",
+            actor="RecoveryStrategyAgent",
             transaction_id=transaction_id,
-            agent_name="PolicyGuardrailEngine",
-            action="evaluate_guardrails",
-            reasoning_summary=f"Evaluated policy for {recommended_action}: {verdict}",
-            input_data={"amount": amount, "action": recommended_action},
-            output_data={"verdict": verdict, "reasons": reasons},
-            policy_result=verdict,
+            input_data={"amount": amount, "failure_reason": failure_reason},
+            output_data={"verdict": result["policy_decision"], "expected_recovery": result["expected_recovery"]},
+            policy_result=result["policy_decision"],
         )
-        db.add(audit_entry)
-        await db.commit()
 
         return AnalyzeResponse(
             transaction_id=transaction_id,
-            root_cause="Payment Method Degradation (UPI Timeout)",
-            confidence=0.91,
-            evidence=[
-                "NPCI UPI failure spike (+4.8x normal baseline) detected during checkout",
-                f"Customer {customer_name} historical success rate >= 90%",
-                "No suspicious velocity or chargeback risk found",
-                "Payment Link recovery predicted with 87% conversion probability",
-            ],
-            recovery_probability=recovery_probability,
-            recommended_action="payment_link",
-            expected_recovery=expected_recovery,
-            policy_decision=verdict,
-            guardrails_passed=(verdict == "APPROVED"),
-            policy_details=reasons,
-            rag_policy_reference="Retrieved: Payment Recovery Policy §2.1 & §3 (Amount <= ₹25,000 auto-approved)",
+            root_cause=result["root_cause"],
+            confidence=result["confidence"],
+            evidence=result["evidence"],
+            recovery_probability=result["recovery_probability"],
+            recommended_action=result["action"],
+            expected_recovery=result["expected_recovery"],
+            policy_decision=result["policy_decision"],
+            guardrails_passed=(result["policy_decision"] == "APPROVED"),
+            policy_details=[c.get("detail", "") for c in result["policy_checks"]],
+            rag_policy_reference=result["policy_references"][0] if result["policy_references"] else None,
         )
 
     @classmethod
@@ -112,10 +124,10 @@ class RecoveryService:
         db: AsyncSession,
         transaction_id: str,
         action_type: str = "payment_link",
+        is_simulation_mode: bool = False,
     ) -> ExecuteResponse:
         start_time = time.time()
 
-        # Fetch transaction & customer
         txn_res = await db.execute(
             select(Transaction, Customer, RevenueRisk)
             .join(Customer, Customer.id == Transaction.customer_id)
@@ -142,7 +154,7 @@ class RecoveryService:
             attempt_number = txn.attempt_number
             failure_reason = txn.failure_reason or "upi_timeout"
 
-        # Deterministic Policy Validation
+        # Deterministic Guardrails Check
         verdict, checks, reasons = PolicyEngine.evaluate(
             amount=amount,
             proposed_action=action_type,
@@ -158,7 +170,16 @@ class RecoveryService:
         ]
 
         if verdict == "BLOCKED":
-            timeline_steps.append({"step": "Action Execution", "status": "blocked", "reason": reasons[0] if reasons else "Blocked by policy"})
+            timeline_steps.append({"step": "Action Execution", "status": "blocked", "reason": reasons[0] if reasons else "Blocked"})
+            await AuditService.record_audit_event(
+                db=db,
+                agent_name="PolicyGuardrailEngine",
+                action="block_unauthorized_recovery",
+                reasoning_summary=f"Blocked {action_type} for {transaction_id}: {reasons[0] if reasons else 'Limit exceeded'}",
+                actor="PolicyGuardrailEngine",
+                transaction_id=transaction_id,
+                policy_result="BLOCKED",
+            )
             return ExecuteResponse(
                 transaction_id=transaction_id,
                 action_id=f"act_blocked_{uuid.uuid4().hex[:8]}",
@@ -170,13 +191,12 @@ class RecoveryService:
             )
 
         if verdict == "HUMAN_APPROVAL_REQUIRED":
-            # Create pending action in DB
             action_id = f"act_pend_{uuid.uuid4().hex[:8]}"
             new_action = RecoveryAction(
                 id=action_id,
                 transaction_id=transaction_id,
                 action_type=action_type,
-                reason="High-value or flagged transaction requiring human review",
+                reason="High-value or flagged transaction routed to human review",
                 confidence=0.88,
                 policy_decision="HUMAN_APPROVAL_REQUIRED",
                 status="pending",
@@ -185,6 +205,15 @@ class RecoveryService:
             await db.commit()
 
             timeline_steps.append({"step": "Routed to Human Review", "status": "pending_approval", "timestamp": datetime.utcnow().isoformat()})
+            await AuditService.record_audit_event(
+                db=db,
+                agent_name="PolicyGuardrailEngine",
+                action="route_to_human_approval",
+                reasoning_summary=f"Routed {transaction_id} to merchant human review queue",
+                actor="PolicyGuardrailEngine",
+                transaction_id=transaction_id,
+                policy_result="HUMAN_APPROVAL_REQUIRED",
+            )
             return ExecuteResponse(
                 transaction_id=transaction_id,
                 action_id=action_id,
@@ -195,8 +224,8 @@ class RecoveryService:
                 timeline_steps=timeline_steps,
             )
 
-        # APPROVED: Execute via Razorpay Test Mode API
-        ref_id = f"recov_{transaction_id}_{uuid.uuid4().hex[:6]}"
+        # APPROVED: Primary Path -> Razorpay Test Mode API
+        ref_id = f"recov_{transaction_id}_{int(time.time())}"
         rzp_link = await razorpay_service.create_payment_link(
             amount=amount,
             currency=currency,
@@ -212,7 +241,7 @@ class RecoveryService:
             id=action_id,
             transaction_id=transaction_id,
             action_type=action_type,
-            reason="Autonomous recovery via Razorpay Payment Link",
+            reason="Autonomous recovery via Razorpay Test Mode Payment Link",
             confidence=0.91,
             policy_decision="APPROVED",
             status="executed",
@@ -221,26 +250,18 @@ class RecoveryService:
         )
         db.add(new_action)
 
-        # Audit & Run log
-        latency_ms = int((time.time() - start_time) * 1000)
-        db.add(AgentRun(
-            transaction_id=transaction_id,
-            agent_name="ActionExecutionAgent",
-            status="success",
-            latency_ms=max(latency_ms, 240),
-            input_data={"action_type": action_type, "amount": amount},
-            output_data={"payment_link_id": rzp_link.get("id"), "url": rzp_link.get("short_url")},
-        ))
-        db.add(AuditLog(
-            transaction_id=transaction_id,
+        # Record Hash-Chained Audit
+        await AuditService.record_audit_event(
+            db=db,
             agent_name="ActionExecutionAgent",
             action="create_razorpay_payment_link",
             reasoning_summary=f"Dispatched Razorpay Test Mode link: {rzp_link.get('short_url')}",
+            actor="ActionExecutionAgent",
+            transaction_id=transaction_id,
             input_data={"amount": amount, "customer": customer_name},
             output_data=rzp_link,
             policy_result="APPROVED",
-        ))
-        await db.commit()
+        )
 
         timeline_steps.append({"step": "Razorpay Test Mode API Call", "status": "completed", "link": rzp_link.get("short_url"), "timestamp": datetime.utcnow().isoformat()})
         timeline_steps.append({"step": "Payment Link Generated & Dispatched", "status": "completed", "timestamp": datetime.utcnow().isoformat()})
@@ -253,7 +274,7 @@ class RecoveryService:
             razorpay_payment_link=rzp_link.get("short_url"),
             razorpay_reference_id=rzp_link.get("id"),
             policy_verdict=verdict,
-            message=f"Autonomous Payment Link successfully generated and dispatched via Razorpay Test Mode.",
+            message="Autonomous Payment Link successfully generated and dispatched via Razorpay Test Mode.",
             timeline_steps=timeline_steps,
         )
 
@@ -264,6 +285,7 @@ class RecoveryService:
         transaction_id: str,
         approved: bool = True,
         approver_note: str = "Approved by Merchant Admin",
+        actor: str = "MerchantAdmin",
     ) -> ApproveResponse:
         action_query = await db.execute(
             select(RecoveryAction).where(
@@ -279,14 +301,15 @@ class RecoveryService:
             if action:
                 action.status = "rejected"
                 action.completed_at = datetime.utcnow()
-            db.add(AuditLog(
-                transaction_id=transaction_id,
+            await AuditService.record_audit_event(
+                db=db,
                 agent_name="HumanReviewer",
                 action="reject_recovery_action",
-                reasoning_summary=f"Action rejected by merchant: {approver_note}",
+                reasoning_summary=f"Action rejected by {actor}: {approver_note}",
+                actor=actor,
+                transaction_id=transaction_id,
                 policy_result="REJECTED",
-            ))
-            await db.commit()
+            )
             return ApproveResponse(
                 transaction_id=transaction_id,
                 action_id=action_id,
@@ -294,8 +317,17 @@ class RecoveryService:
                 message="Recovery action rejected by merchant admin.",
             )
 
-        # If approved, execute recovery
+        # Approved: Execute via Razorpay Test Mode
         exec_res = await cls.execute_recovery(db, transaction_id, action_type="payment_link")
+        await AuditService.record_audit_event(
+            db=db,
+            agent_name="HumanReviewer",
+            action="approve_and_execute_recovery",
+            reasoning_summary=f"Action approved by {actor}: Dispatched Razorpay link {exec_res.razorpay_payment_link}",
+            actor=actor,
+            transaction_id=transaction_id,
+            policy_result="APPROVED",
+        )
         return ApproveResponse(
             transaction_id=transaction_id,
             action_id=exec_res.action_id,

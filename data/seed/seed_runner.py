@@ -3,8 +3,10 @@ import sys
 import os
 from datetime import datetime, timedelta
 import uuid
+from sqlalchemy import select
 
-# Ensure backend path is in sys.path
+# Ensure workspace root and backend path are in sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../backend")))
 
 from app.core.database import AsyncSessionLocal, init_db
@@ -24,7 +26,15 @@ async def seed_database(sample_size: int = 250):
     await init_db()
 
     async with AsyncSessionLocal() as session:
-        print("Checking if merchant exists...")
+        # Check if merchant already exists
+        existing_mch = await session.execute(
+            select(Merchant).where(Merchant.id == "mch_razorpay_demo")
+        )
+        if existing_mch.scalar_one_or_none():
+            print("Database already seeded with demo merchant. Skipping duplicate seed.")
+            return
+
+        print("Creating demo merchant...")
         merchant = Merchant(
             id="mch_razorpay_demo",
             name="Fintech Merchant Global",
@@ -161,14 +171,34 @@ async def seed_database(sample_size: int = 250):
                     )
                     session.add(action)
 
-        # Add initial Audit Logs
-        session.add(AuditLog(
+        # Add initial Cryptographic Hash-Chained Audit Log
+        now = datetime.utcnow()
+        init_id = "aud_seed_001"
+        init_prev_hash = "0" * 64
+        init_hash = AuditLog.calculate_hash(
+            id_str=init_id,
             transaction_id="txn_4999_upi",
             agent_name="RevenueDetectionAgent",
             action="detect_revenue_risk",
             reasoning_summary="Identified ₹4,999 UPI failed transaction with high recovery probability (87%).",
             policy_result="PASSED",
+            previous_hash=init_prev_hash,
+            created_at_str=now.isoformat(),
+        )
+
+        session.add(AuditLog(
+            id=init_id,
+            transaction_id="txn_4999_upi",
+            agent_name="RevenueDetectionAgent",
+            actor="RevenueDetectionAgent",
+            action="detect_revenue_risk",
+            reasoning_summary="Identified ₹4,999 UPI failed transaction with high recovery probability (87%).",
+            policy_result="PASSED",
+            previous_hash=init_prev_hash,
+            event_hash=init_hash,
+            created_at=now,
         ))
+
         session.add(AgentRun(
             transaction_id="txn_4999_upi",
             agent_name="RevenueDetectionAgent",

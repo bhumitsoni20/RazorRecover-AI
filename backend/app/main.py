@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import init_db
@@ -35,6 +36,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Root endpoint
+@app.get("/", include_in_schema=False)
+async def root():
+    return {
+        "service": "RazorRecover AI Backend API",
+        "status": "online",
+        "docs_url": "/docs",
+        "health_url": "/api/health",
+        "dashboard_ui": "http://localhost:3000/dashboard",
+    }
+
 
 # Health endpoint
 @app.get("/api/health", tags=["Health"])

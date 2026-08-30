@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 
 class AnalyzeRequest(BaseModel):
+    transaction_id: Optional[str] = None
     include_rag_evidence: bool = True
 
 
@@ -17,10 +18,12 @@ class AnalyzeResponse(BaseModel):
     policy_decision: str
     guardrails_passed: bool
     policy_details: List[str]
+    rag_policy_reference: Optional[str] = None
     rag_retrieval_excerpt: Optional[str] = None
 
 
 class ExecuteRequest(BaseModel):
+    transaction_id: Optional[str] = None
     action_type: Optional[str] = None
     override_reason: Optional[str] = None
 
@@ -38,6 +41,7 @@ class ExecuteResponse(BaseModel):
 
 
 class ApproveRequest(BaseModel):
+    transaction_id: Optional[str] = None
     approved: bool = True
     approver_note: Optional[str] = None
 

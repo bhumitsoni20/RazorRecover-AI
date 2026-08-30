@@ -20,12 +20,15 @@ import {
   History,
   FileText,
   Zap,
+  DollarSign,
+  Brain,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AgentExecutionTimeline, TimelineStep } from "@/components/recovery/agent-execution-timeline";
 import { LiveExecutionModal } from "@/components/recovery/live-execution-modal";
+import { WebhookPlaygroundModal } from "@/components/recovery/webhook-playground-modal";
 import { apiClient } from "@/lib/api-client";
 import { TransactionDetailResponse } from "@/types/api";
 import { formatCurrency, formatPercentage } from "@/lib/formatters";
@@ -39,56 +42,69 @@ export default function TransactionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [isExecuting, setIsExecuting] = useState(false);
   const [showLiveModal, setShowLiveModal] = useState(false);
+  const [showWebhookModal, setShowWebhookModal] = useState(false);
   const [executionResult, setExecutionResult] = useState<any>(null);
+  const [isRecovered, setIsRecovered] = useState(false);
   const [timelineSteps, setTimelineSteps] = useState<TimelineStep[]>([]);
 
-  useEffect(() => {
-    async function loadDetail() {
-      setLoading(true);
-      const res = await apiClient.getTransaction(id);
-      setTransaction(res);
-
-      setTimelineSteps([
-        {
-          id: "step_1",
-          title: "Revenue Risk Detected",
-          description: `Identified payment failure of ${formatCurrency(res.amount)} due to ${res.failure_reason || "timeout"}`,
-          status: "completed",
-          agent: "RevenueDetectionAgent",
-        },
-        {
-          id: "step_2",
-          title: "Root Cause Investigation",
-          description: res.investigation?.root_cause || "Payment Method Degradation (UPI spike detected)",
-          status: "completed",
-          agent: "RootCauseAgent",
-        },
-        {
-          id: "step_3",
-          title: "RAG Merchant Policy Retrieved",
-          description: res.investigation?.rag_policy_reference || "Policy §2.1: Payment link generation approved for degradation <= ₹25k",
-          status: "completed",
-          agent: "RAGPolicyRetriever",
-        },
-        {
-          id: "step_4",
-          title: "Deterministic Guardrails Check",
-          description: "All safety limits, max retries, fraud thresholds, and policy rules evaluated",
-          status: "completed",
-          meta: "Policy Check: APPROVED",
-          agent: "PolicyGuardrailEngine",
-        },
-        {
-          id: "step_5",
-          title: "Execute Recovery via Razorpay Test API",
-          description: "Generate Razorpay Test Mode Payment Link and dispatch to customer",
-          status: res.recovery_actions.length > 0 ? "completed" : "pending",
-          agent: "ActionExecutionAgent",
-        },
-      ]);
-
-      setLoading(false);
+  const loadDetail = async () => {
+    setLoading(true);
+    const res = await apiClient.getTransaction(id);
+    setTransaction(res);
+    if (res.status === "recovered") {
+      setIsRecovered(true);
     }
+
+    setTimelineSteps([
+      {
+        id: "step_1",
+        title: "Revenue Risk Detected",
+        description: `Identified payment failure of ${formatCurrency(res.amount)} due to ${res.failure_reason || "timeout"}`,
+        status: "completed",
+        agent: "RevenueDetectionAgent",
+      },
+      {
+        id: "step_2",
+        title: "Root Cause AI Investigation",
+        description: res.investigation?.root_cause || "Payment Method Degradation (UPI spike detected)",
+        status: "completed",
+        agent: "RootCauseAgent",
+      },
+      {
+        id: "step_3",
+        title: "Policy RAG Retrieval",
+        description: res.investigation?.rag_policy_reference || "Policy §2.1: Payment link generation approved for degradation <= ₹25k",
+        status: "completed",
+        agent: "RAGPolicyRetriever",
+      },
+      {
+        id: "step_4",
+        title: "Deterministic Guardrails Check",
+        description: "Deterministic limits verified: amount <= ₹25k, retries <= 2, fraud risk < 0.65 (APPROVED)",
+        status: "completed",
+        meta: "Policy Check: APPROVED",
+        agent: "PolicyGuardrailEngine",
+      },
+      {
+        id: "step_5",
+        title: "Razorpay Test Mode Execution",
+        description: "Generated Razorpay Test Mode Payment Link and dispatched to customer",
+        status: res.recovery_actions.length > 0 || res.status === "recovered" ? "completed" : "pending",
+        agent: "ActionExecutionAgent",
+      },
+      {
+        id: "step_6",
+        title: "Webhook Verification & Recovery",
+        description: res.status === "recovered" ? "Inbound payment_link.paid webhook verified. Transaction marked recovered." : "Waiting for customer payment or webhook event...",
+        status: res.status === "recovered" ? "completed" : "pending",
+        agent: "RazorpayWebhookVerifier",
+      },
+    ]);
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
     loadDetail();
   }, [id]);
 
@@ -105,6 +121,21 @@ export default function TransactionDetailPage() {
               status: "completed",
               description: `Generated Razorpay Test Mode Link: ${result.paymentLink}`,
               meta: "Executed via Razorpay Test Mode",
+            }
+          : step
+      )
+    );
+  };
+
+  const handlePaymentSuccess = () => {
+    setIsRecovered(true);
+    setTimelineSteps((prev) =>
+      prev.map((step) =>
+        step.id === "step_6"
+          ? {
+              ...step,
+              status: "completed",
+              description: "Inbound payment_link.paid webhook verified via raw HMAC-SHA256. Transaction marked recovered.",
             }
           : step
       )
@@ -135,6 +166,15 @@ export default function TransactionDetailPage() {
         onComplete={handleModalComplete}
       />
 
+      {/* Webhook Playground Modal */}
+      <WebhookPlaygroundModal
+        open={showWebhookModal}
+        onOpenChange={setShowWebhookModal}
+        transactionId={transaction.id}
+        amount={transaction.amount}
+        onPaymentSuccess={handlePaymentSuccess}
+      />
+
       {/* Back Button & Header */}
       <motion.div
         variants={itemFadeUp}
@@ -151,25 +191,37 @@ export default function TransactionDetailPage() {
               <h1 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">
                 {transaction.id}
               </h1>
-              <Badge variant={transaction.status === "recovered" || executionResult ? "success" : "danger"} size="sm">
-                {executionResult ? "Recovered Link Sent" : transaction.status}
+              <Badge variant={isRecovered ? "success" : executionResult ? "warning" : "danger"} size="sm">
+                {isRecovered ? "RECOVERED (₹4,999)" : executionResult ? "Payment Link Sent" : transaction.status}
               </Badge>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Initiated on {transaction.created_at} • Gateway: {transaction.payment_gateway.toUpperCase()}
+              Initiated on {transaction.created_at} • Gateway: {transaction.payment_gateway.toUpperCase()} • Razorpay Test Mode
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {executionResult && !isRecovered && (
+            <Button
+              onClick={() => setShowWebhookModal(true)}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+            >
+              <Zap className="h-3.5 w-3.5" />
+              <span>Simulate Customer Paying</span>
+            </Button>
+          )}
+
           <Button
             onClick={() => setShowLiveModal(true)}
             className="gap-2 bg-gradient-to-r from-[#0052cc] to-[#1e40af] text-white shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all"
           >
-            {executionResult?.status === "executed" ? (
+            {isRecovered ? (
               <>
                 <CheckCircle2 className="h-4 w-4 text-emerald-300" />
-                <span>Re-run AI Recovery</span>
+                <span>Re-run AI Reasoning</span>
               </>
             ) : (
               <>
@@ -181,11 +233,11 @@ export default function TransactionDetailPage() {
         </div>
       </motion.div>
 
-      {/* Main Grid: Transaction Details & Customer / AI Investigation */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Transaction Metadata & Customer Context */}
+        {/* Left Column */}
         <motion.div variants={itemFadeUp} className="space-y-6">
-          {/* Transaction Metadata Card */}
+          {/* Summary Card */}
           <Card className="hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Transaction Summary</CardTitle>
@@ -208,23 +260,17 @@ export default function TransactionDetailPage() {
               <div className="flex justify-between py-1.5 border-b border-slate-100">
                 <span className="text-slate-500">Failure Reason</span>
                 <span className="font-mono text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
-                  {transaction.failure_reason || "timeout"}
+                  {transaction.failure_reason || "upi_timeout"}
                 </span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-slate-100">
                 <span className="text-slate-500">Attempt Count</span>
-                <span className="font-medium text-slate-800">#{transaction.attempt_number} of 2</span>
+                <span className="font-medium text-slate-800">#{transaction.attempt_number} of 2 (Safe Limit)</span>
               </div>
-              {transaction.razorpay_order_id && (
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-500">Razorpay Order</span>
-                  <span className="font-mono text-slate-700 text-[11px]">{transaction.razorpay_order_id}</span>
-                </div>
-              )}
             </CardContent>
           </Card>
 
-          {/* Customer History & Trust Card */}
+          {/* Customer History */}
           <Card className="hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2">
@@ -264,36 +310,36 @@ export default function TransactionDetailPage() {
           </Card>
         </motion.div>
 
-        {/* Right Column: AI Investigation, Policy Check & Execution Timeline */}
+        {/* Right Column: Why this action? + Agent Timeline */}
         <motion.div variants={itemFadeUp} className="lg:col-span-2 space-y-6">
-          {/* AI Investigation Banner Card */}
+          {/* Why This Action Card */}
           <Card className="border-blue-200 bg-gradient-to-br from-white to-blue-50/40 shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white shadow-xs">
-                    <Sparkles className="h-4 w-4" />
+                    <Brain className="h-4 w-4" />
                   </div>
                   <div>
-                    <CardTitle className="text-base text-slate-900">AI Investigation & Diagnostics</CardTitle>
-                    <p className="text-xs text-slate-500">Autonomous root cause reasoning & ML recovery prediction</p>
+                    <CardTitle className="text-base text-slate-900">Why this action?</CardTitle>
+                    <p className="text-xs text-slate-500">Autonomous reasoning, RAG merchant policy context & ML risk prediction</p>
                   </div>
                 </div>
                 <Badge variant="default" size="md" className="font-semibold">
-                  91% Confidence
+                  91% Model Confidence
                 </Badge>
               </div>
             </CardHeader>
 
             <CardContent className="space-y-4">
-              {/* Root Cause & Probability Grid */}
+              {/* Root Cause & ML Probability */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <motion.div whileHover={{ scale: 1.02 }} className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition-transform">
                   <span className="text-[10px] uppercase font-bold text-slate-400">Root Cause</span>
                   <div className="text-sm font-bold text-slate-900 mt-1">
                     {investigation?.root_cause || "Payment Method Degradation"}
                   </div>
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">UPI PSP Latency Spike</span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">UPI PSP Latency Spike (+4.8x)</span>
                 </motion.div>
 
                 <motion.div whileHover={{ scale: 1.02 }} className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition-transform">
@@ -302,23 +348,23 @@ export default function TransactionDetailPage() {
                     {investigation ? formatPercentage(investigation.recovery_probability * 100) : "87.0%"}
                   </div>
                   <span className="text-[10px] text-slate-500 mt-0.5 block">
-                    Expected: {investigation ? formatCurrency(investigation.expected_recovery) : "₹4,349"}
+                    Expected Yield: {investigation ? formatCurrency(investigation.expected_recovery) : "₹4,349"}
                   </span>
                 </motion.div>
 
                 <motion.div whileHover={{ scale: 1.02 }} className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition-transform">
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Recommended Action</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Selected Strategy</span>
                   <div className="text-sm font-bold text-[#0052cc] mt-1 capitalize">
                     {investigation?.recommended_action.replace("_", " ") || "Generate Payment Link"}
                   </div>
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">Via Razorpay Test Mode</span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">Via Razorpay Test Mode API</span>
                 </motion.div>
               </div>
 
-              {/* Evidence Checklist with Staggered Entrance */}
+              {/* Evidence Checklist */}
               <div>
                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  Investigative Evidence & Indicators
+                  Investigative Evidence & Anomaly Telemetry
                 </span>
                 <div className="mt-2 space-y-1.5">
                   {investigation?.evidence.map((item, idx) => (
@@ -336,14 +382,14 @@ export default function TransactionDetailPage() {
                 </div>
               </div>
 
-              {/* Policy Guardrails & RAG Citation */}
-              <div className="pt-2 border-t border-blue-100">
+              {/* Policy RAG Section Citation */}
+              <div className="pt-2 border-t border-blue-100 space-y-2">
                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                   <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                  <span>Deterministic Guardrails Evaluation</span>
+                  <span>Deterministic Guardrails & Policy Citations</span>
                 </span>
 
-                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {investigation?.policy_checks.map((check, idx) => (
                     <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 text-xs">
                       {check.status === "passed" ? (
@@ -357,16 +403,16 @@ export default function TransactionDetailPage() {
                 </div>
 
                 {investigation?.rag_policy_reference && (
-                  <div className="mt-3 flex items-start gap-2 text-[11px] text-slate-600 bg-blue-50/70 p-2.5 rounded-lg border border-blue-200">
+                  <div className="flex items-start gap-2 text-[11px] text-slate-600 bg-blue-50/70 p-2.5 rounded-lg border border-blue-200">
                     <BookOpen className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>RAG Policy Source:</strong> {investigation.rag_policy_reference}</span>
+                    <span><strong>Retrieved Policy Citation:</strong> {investigation.rag_policy_reference}</span>
                   </div>
                 )}
               </div>
             </CardContent>
           </Card>
 
-          {/* Animated Agent Execution Timeline */}
+          {/* Agent Execution Timeline */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2">

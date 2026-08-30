@@ -1,10 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.evaluation import EvaluationMetricsResponse, FailureCategoryMetric
+from app.ml.recovery_model import ml_recovery_model
 
 
 class EvaluationService:
     @classmethod
     async def get_metrics(cls, db: AsyncSession) -> EvaluationMetricsResponse:
+        real_ml_metrics = ml_recovery_model.get_metrics()
+
         return EvaluationMetricsResponse(
             total_transactions_analyzed=10420,
             total_revenue_at_risk=284210.0,
@@ -46,8 +49,8 @@ class EvaluationService:
                     recovered_amount=22750.0,
                 ),
             ],
-            ml_roc_auc_score=0.912,
-            ml_precision=0.894,
-            ml_recall=0.868,
-            ml_f1_score=0.881,
+            ml_roc_auc_score=real_ml_metrics.get("roc_auc", 0.912),
+            ml_precision=real_ml_metrics.get("precision", 0.894),
+            ml_recall=real_ml_metrics.get("recall", 0.868),
+            ml_f1_score=real_ml_metrics.get("f1_score", 0.881),
         )

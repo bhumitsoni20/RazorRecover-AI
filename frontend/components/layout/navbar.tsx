@@ -1,9 +1,12 @@
 "use client";
 
-import { Bell, Search, ShieldCheck, ChevronDown, Store, Sparkles } from "lucide-react";
+import React, { useState } from "react";
+import { Bell, Search, ShieldCheck, ChevronDown, Store, Sparkles, Activity, Check } from "lucide-react";
 import Link from "next/link";
 
 export function Navbar() {
+  const [activeMode, setActiveMode] = useState<"real_test" | "simulation">("real_test");
+
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200/80 bg-white/90 px-6 backdrop-blur-md">
       {/* Merchant Context */}
@@ -12,12 +15,32 @@ export function Navbar() {
           <Store className="h-3.5 w-3.5 text-blue-600" />
           <span className="font-semibold text-slate-900">Fintech Merchant Global</span>
           <span className="text-slate-400 font-mono text-[10px] bg-white px-1.5 py-0.5 rounded border border-slate-200">INR (₹)</span>
-          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
         </div>
 
-        <div className="hidden md:flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 border border-amber-200">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-          Razorpay Test Mode
+        {/* Explicit Mode Selector: Real Test Mode vs Simulation Mode */}
+        <div className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-[11px]">
+          <button
+            onClick={() => setActiveMode("real_test")}
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-semibold transition-all ${
+              activeMode === "real_test"
+                ? "bg-white text-blue-700 shadow-xs border border-blue-200/60"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${activeMode === "real_test" ? "bg-blue-600 animate-pulse" : "bg-slate-400"}`}></span>
+            <span>Razorpay Real Test Mode</span>
+          </button>
+          <button
+            onClick={() => setActiveMode("simulation")}
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-semibold transition-all ${
+              activeMode === "simulation"
+                ? "bg-white text-purple-700 shadow-xs border border-purple-200/60"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${activeMode === "simulation" ? "bg-purple-600 animate-pulse" : "bg-slate-400"}`}></span>
+            <span>Simulation Mode</span>
+          </button>
         </div>
       </div>
 
@@ -29,7 +52,7 @@ export function Navbar() {
           className="hidden sm:inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#0052cc] to-[#1e40af] px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:opacity-95 transition-all"
         >
           <Sparkles className="h-3.5 w-3.5" />
-          <span>Demo ₹4,999 Investigation</span>
+          <span>Demo ₹4,999 Case</span>
         </Link>
 
         {/* Notifications */}

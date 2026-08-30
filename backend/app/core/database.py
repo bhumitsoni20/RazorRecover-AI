@@ -9,9 +9,22 @@ from app.core.config import settings
 from app.core.logging import logger
 
 db_url = settings.DATABASE_URL
-# If user has postgresql:// replace with postgresql+asyncpg://
-if db_url.startswith("postgresql://"):
-    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+# Check if asyncpg is importable; if not and postgresql is configured, fall back to SQLite aiosqlite for local development
+has_asyncpg = False
+try:
+    import asyncpg  # noqa
+    has_asyncpg = True
+except ImportError:
+    has_asyncpg = False
+
+if db_url.startswith("postgresql://") or db_url.startswith("postgresql+asyncpg://"):
+    if has_asyncpg:
+        if db_url.startswith("postgresql://"):
+            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    else:
+        logger.warning("asyncpg module not found. Falling back to local SQLite database (sqlite+aiosqlite:///./razorrecover.db).")
+        db_url = "sqlite+aiosqlite:///./razorrecover.db"
 elif db_url.startswith("sqlite://") and not db_url.startswith("sqlite+aiosqlite://"):
     db_url = db_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
 
@@ -51,7 +64,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def init_db():
     try:
         async with engine.begin() as conn:
-            # Import all models before create_all
             import app.models  # noqa
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables verified and initialized successfully.")
