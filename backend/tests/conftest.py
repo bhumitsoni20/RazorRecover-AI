@@ -174,3 +174,11 @@ async def setup_test_db():
         await session.commit()
 
     yield
+
+
+@pytest_asyncio.fixture
+async def async_client():
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        yield ac

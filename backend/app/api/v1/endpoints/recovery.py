@@ -157,5 +157,6 @@ async def create_razorpay_order(
             "amount": int(amount * 100),
             "currency": currency,
             "key_id": razorpay_service.key_id,
+            "is_live_order": bool(order.get("is_live_order", False)),
         },
     )

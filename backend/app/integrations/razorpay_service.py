@@ -47,6 +47,7 @@ class RazorpayService:
                 )
                 if response.status_code == 200:
                     data = response.json()
+                    data["is_live_order"] = True
                     logger.info(f"[Razorpay API] Created order {data.get('id')}")
                     return data
         except Exception as e:
@@ -63,6 +64,7 @@ class RazorpayService:
             "receipt": receipt,
             "status": "created",
             "notes": notes or {},
+            "is_live_order": False,
         }
 
     async def create_payment_link(

@@ -277,3 +277,30 @@ export interface RevenueRiskSummaryResponse {
   anomalies: AnomalyItem[];
   calculated_at: string;
 }
+
+export interface RootCauseResponse {
+  transaction_id: string;
+  root_cause: string;
+  confidence: number;
+  evidence: string[];
+  explanation: string;
+  signals_analyzed?: Record<string, any>;
+  analyzed_at?: string;
+}
+
+export interface RetrievedPolicyChunk {
+  chunk_id?: string;
+  source: string;
+  section: string;
+  content: string;
+  relevance_score: number;
+}
+
+export interface PolicyContextResponse {
+  transaction_id: string;
+  query: string;
+  retrieved_policies: RetrievedPolicyChunk[];
+  ai_interpretation: string;
+  policy_match_confidence: number;
+  retrieved_at?: string;
+}

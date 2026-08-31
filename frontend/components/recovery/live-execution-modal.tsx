@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/formatters";
+import { apiClient } from "@/lib/api-client";
 
 interface LiveExecutionModalProps {
   open: boolean;
@@ -113,25 +114,11 @@ export function LiveExecutionModal({
 
     const executeBackend = async () => {
       try {
-        // If high value, trigger approve endpoint directly so real link is created
-        const endpoint = isHighValue
-          ? `http://localhost:8000/api/recovery/${transactionId}/approve`
-          : `http://localhost:8000/api/recovery/${transactionId}/execute`;
+        const res = isHighValue
+          ? await apiClient.approveRecovery(transactionId, true)
+          : await apiClient.executeRecovery(transactionId, "payment_link");
 
-        const body = isHighValue
-          ? JSON.stringify({ transaction_id: transactionId, approved: true, approver_note: "Approved via AI Agent Modal" })
-          : JSON.stringify({});
-
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: isHighValue ? body : undefined,
-        });
-
-        if (res.ok) {
-          const json = await res.json();
-          fetchedLink = json.data?.razorpay_payment_link || null;
-        }
+        fetchedLink = res?.razorpay_payment_link || null;
       } catch (err) {
         console.error("Backend recovery execution error:", err);
       }

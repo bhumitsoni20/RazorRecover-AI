@@ -13,6 +13,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
+import { apiClient } from "@/lib/api-client";
 
 interface WebhookPlaygroundModalProps {
   open: boolean;
@@ -35,34 +36,10 @@ export function WebhookPlaygroundModal({
   const handleSimulatePayment = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/webhooks/simulate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transaction_id: transactionId,
-          event_type: "payment_link.paid",
-          amount: amount,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setResult(data.data);
-        if (onPaymentSuccess) {
-          onPaymentSuccess();
-        }
-      } else {
-        setResult({
-          event_id: `evt_sim_${Date.now()}`,
-          event_type: "payment_link.paid",
-          status: "processed_simulation",
-          action_taken: `transaction_${transactionId}_marked_recovered`,
-          signature_verified: true,
-          audit_logged: true,
-        });
-        if (onPaymentSuccess) {
-          onPaymentSuccess();
-        }
+      const data = await apiClient.simulateWebhook(transactionId, "payment_link.paid", amount);
+      setResult(data);
+      if (onPaymentSuccess) {
+        onPaymentSuccess();
       }
     } catch (e) {
       setResult({

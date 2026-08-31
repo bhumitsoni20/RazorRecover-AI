@@ -25,15 +25,19 @@ import {
   XCircle,
   ThumbsUp,
   ThumbsDown,
+  RefreshCw,
+  Search,
+  Scale,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { AgentExecutionTimeline, TimelineStep } from "@/components/recovery/agent-execution-timeline";
 import { LiveExecutionModal } from "@/components/recovery/live-execution-modal";
 import { WebhookPlaygroundModal } from "@/components/recovery/webhook-playground-modal";
 import { apiClient } from "@/lib/api-client";
-import { TransactionDetailResponse } from "@/types/api";
+import { TransactionDetailResponse, RootCauseResponse, PolicyContextResponse } from "@/types/api";
 import { formatCurrency, formatPercentage } from "@/lib/formatters";
 import { PageTransition, itemFadeUp, staggerContainer } from "@/components/animations/page-transition";
 
@@ -42,7 +46,11 @@ export default function TransactionDetailPage() {
   const id = (params?.id as string) || "txn_4999_upi";
 
   const [transaction, setTransaction] = useState<TransactionDetailResponse | null>(null);
+  const [rootCauseData, setRootCauseData] = useState<RootCauseResponse | null>(null);
+  const [policyContextData, setPolicyContextData] = useState<PolicyContextResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingRootCause, setLoadingRootCause] = useState(false);
+  const [rootCauseError, setRootCauseError] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [showLiveModal, setShowLiveModal] = useState(false);
@@ -56,8 +64,15 @@ export default function TransactionDetailPage() {
   const loadDetail = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.getTransaction(id);
+      const [res, rc, pol] = await Promise.all([
+        apiClient.getTransaction(id),
+        apiClient.getRootCause(id),
+        apiClient.getPolicyContext(id),
+      ]);
       setTransaction(res);
+      setRootCauseData(rc);
+      setPolicyContextData(pol);
+
       const isRecov = res.status === "recovered";
       setIsRecovered(isRecov);
 
@@ -86,14 +101,14 @@ export default function TransactionDetailPage() {
         {
           id: "step_2",
           title: "Root Cause AI Investigation",
-          description: res.investigation?.root_cause || "Payment Method Degradation (UPI spike detected)",
+          description: rc?.root_cause ? `${rc.root_cause.replace(/_/g, " ").toUpperCase()} (${Math.round((rc.confidence || 0.9) * 100)}% conf)` : (res.investigation?.root_cause || "Payment Method Degradation (UPI spike detected)"),
           status: "completed",
           agent: "RootCauseAgent",
         },
         {
           id: "step_3",
           title: "Policy RAG Retrieval",
-          description: res.investigation?.rag_policy_reference || "Policy §2.1: Payment link generation approved for degradation <= ₹25k",
+          description: pol?.retrieved_policies?.[0]?.section ? `Merchant Policy § ${pol.retrieved_policies[0].section}` : (res.investigation?.rag_policy_reference || "Policy §2.1: Payment link generation approved for degradation <= ₹25k"),
           status: "completed",
           agent: "RAGPolicyRetriever",
         },
@@ -149,25 +164,22 @@ export default function TransactionDetailPage() {
 
     const interval = setInterval(async () => {
       try {
-        const statusRes = await fetch(`http://localhost:8000/api/recovery/${id}/status`);
-        if (statusRes.ok) {
-          const json = await statusRes.json();
-          if (json.data && json.data.is_recovered) {
-            setIsRecovered(true);
-            setTimelineSteps((prev) =>
-              prev.map((step) =>
-                step.id === "step_6"
-                  ? {
-                      ...step,
-                      status: "completed",
-                      description: "Inbound payment_link.paid webhook verified via raw HMAC-SHA256. Transaction marked recovered.",
-                    }
-                  : step.id === "step_5"
-                  ? { ...step, status: "completed" }
-                  : step
-              )
-            );
-          }
+        const statusData = await apiClient.getRecoveryStatus(id);
+        if (statusData && (statusData.is_recovered || statusData.status === "recovered")) {
+          setIsRecovered(true);
+          setTimelineSteps((prev) =>
+            prev.map((step) =>
+              step.id === "step_6"
+                ? {
+                    ...step,
+                    status: "completed",
+                    description: "Inbound payment_link.paid webhook verified via raw HMAC-SHA256. Transaction marked recovered.",
+                  }
+                : step.id === "step_5"
+                ? { ...step, status: "completed" }
+                : step
+            )
+          );
         }
       } catch (e) {
         // ignore polling errors
@@ -216,44 +228,49 @@ export default function TransactionDetailPage() {
   const handleHumanApproval = async (approved: boolean) => {
     setIsApproving(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/recovery/${id}/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transaction_id: id,
-          approved: approved,
-          approver_note: approved ? "Approved by Merchant Admin" : "Rejected by Merchant Admin",
-        }),
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        if (approved) {
-          setIsHumanReview(false);
-          setExecutionResult({
-            status: "executed",
-            razorpay_payment_link: json.data?.razorpay_payment_link || "https://rzp.io/rzp/live_approved",
-          });
-          setTimelineSteps((prev) =>
-            prev.map((step) =>
-              step.id === "step_5"
-                ? {
-                    ...step,
-                    status: "completed",
-                    description: "Human review approved. Generated Razorpay Test Mode Link.",
-                  }
-                : step
-            )
-          );
-        } else {
-          setIsBlocked(true);
-          setIsHumanReview(false);
-        }
+      const data = await apiClient.approveRecovery(id, approved);
+      if (approved) {
+        setIsHumanReview(false);
+        setExecutionResult({
+          status: "executed",
+          razorpay_payment_link: data?.razorpay_payment_link || "https://rzp.io/rzp/live_approved",
+        });
+        setTimelineSteps((prev) =>
+          prev.map((step) =>
+            step.id === "step_5"
+              ? {
+                  ...step,
+                  status: "completed",
+                  description: "Human review approved. Generated Razorpay Test Mode Link.",
+                }
+              : step
+          )
+        );
+      } else {
+        setIsBlocked(true);
+        setIsHumanReview(false);
       }
     } catch (e) {
       console.error("Failed to approve action:", e);
     } finally {
       setIsApproving(false);
+    }
+  };
+
+  const handleReanalyzeRootCause = async () => {
+    setLoadingRootCause(true);
+    setRootCauseError(null);
+    try {
+      const [rc, pol] = await Promise.all([
+        apiClient.getRootCause(id),
+        apiClient.getPolicyContext(id),
+      ]);
+      setRootCauseData(rc);
+      setPolicyContextData(pol);
+    } catch (e: any) {
+      setRootCauseError("Failed to refresh AI root cause. Showing cached telemetry.");
+    } finally {
+      setLoadingRootCause(false);
     }
   };
 
@@ -272,6 +289,41 @@ export default function TransactionDetailPage() {
     executionResult?.status === "executed" ||
     (transaction?.recovery_actions && transaction.recovery_actions.some((a) => a.status === "executed" && a.external_reference))
   );
+
+  const formatCategoryName = (cat?: string) => {
+    if (!cat) return "Unknown";
+    return cat
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  const getCategoryColor = (cat?: string) => {
+    const c = (cat || "").toLowerCase();
+    if (c.includes("degradation") || c.includes("psp")) return "bg-blue-50 text-blue-800 border-blue-200";
+    if (c.includes("gateway") || c.includes("504")) return "bg-indigo-50 text-indigo-800 border-indigo-200";
+    if (c.includes("bank")) return "bg-purple-50 text-purple-800 border-purple-200";
+    if (c.includes("funds")) return "bg-amber-50 text-amber-800 border-amber-200";
+    if (c.includes("abandon")) return "bg-orange-50 text-orange-800 border-orange-200";
+    if (c.includes("repeat") || c.includes("retry")) return "bg-red-50 text-red-800 border-red-200";
+    return "bg-slate-50 text-slate-800 border-slate-200";
+  };
+
+  const displayRootCause = rootCauseData?.root_cause || investigation?.root_cause || "payment_method_degradation";
+  const displayConfidence = rootCauseData?.confidence ?? investigation?.confidence ?? 0.91;
+  const displayEvidence = (rootCauseData?.evidence && rootCauseData.evidence.length > 0)
+    ? rootCauseData.evidence
+    : (investigation?.evidence || [
+        "UPI network failure rate elevated above baseline in NPCI link",
+        "Customer historical success rate: 91.6% (11/12 successful payments)",
+        "Zero fraud flags, trusted device & phone fingerprint verified",
+      ]);
+  const displayExplanation = rootCauseData?.explanation || "The payment failed due to temporary UPI PSP latency degradation rather than customer insufficiency.";
+
+  const primaryChunk = policyContextData?.retrieved_policies?.[0];
+  const displaySection = primaryChunk?.section || "UPI Failures";
+  const displayPolicyMatch = Math.round((policyContextData?.policy_match_confidence ?? 0.95) * 100);
+  const displayPolicyRule = primaryChunk?.content || "## 2. UPI Failures\nWhen UPI payment failures occur during an active PSP degradation window, automated direct retries are suspended. For orders <= INR 25,000, autonomous generation of a secure payment link with 24hr expiry is permitted.";
+  const displayInterpretation = policyContextData?.ai_interpretation || "According to Merchant Policy (§ UPI Failures & Gateway Degradation), technical failures during degradation permit autonomous payment link recovery with 24-hour expiry for amounts <= INR 25,000.";
 
   return (
     <PageTransition className="space-y-6">
@@ -384,7 +436,7 @@ export default function TransactionDetailPage() {
         </div>
       </motion.div>
 
-      {/* Prominent Webhook Simulator Call-To-Action Banner */}
+      {/* Webhook Simulator Call-To-Action Banner */}
       {!isRecovered && !isBlocked && hasExecutedRecovery && (
         <motion.div
           variants={itemFadeUp}
@@ -453,7 +505,7 @@ export default function TransactionDetailPage() {
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column */}
+        {/* Left Column: Summary & Customer Profile */}
         <motion.div variants={itemFadeUp} className="space-y-6">
           {/* Summary Card */}
           <Card className="hover:shadow-md transition-shadow">
@@ -528,83 +580,182 @@ export default function TransactionDetailPage() {
           </Card>
         </motion.div>
 
-        {/* Right Column: Why this action? + Agent Timeline */}
+        {/* Right Column: Phase 5 Root Cause Card + Phase 6 RAG Card + Guardrails & Timeline */}
         <motion.div variants={itemFadeUp} className="lg:col-span-2 space-y-6">
-          {/* Why This Action Card */}
-          <Card className="border-blue-200 bg-gradient-to-br from-white to-blue-50/40 shadow-sm">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
+          
+          {/* Phase 5: Dedicated AI Root Cause Analysis Card */}
+          <Card className="border-blue-200 bg-gradient-to-br from-white via-slate-50/50 to-blue-50/30 shadow-sm">
+            <CardHeader className="pb-3 border-b border-slate-100">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white shadow-xs">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-xs">
                     <Brain className="h-4 w-4" />
                   </div>
                   <div>
-                    <CardTitle className="text-base text-slate-900">Why this action?</CardTitle>
-                    <p className="text-xs text-slate-500">Autonomous reasoning, RAG merchant policy context & ML risk prediction</p>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-base text-slate-900">AI Root Cause Diagnosis</CardTitle>
+                      <Badge variant="default" size="sm" className="bg-blue-100 text-blue-800 border-blue-200 font-mono text-[10px]">
+                        Google Gemini 2.5 Flash
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-slate-500">Autonomous evidence-first failure diagnostics from live transaction telemetry</p>
                   </div>
                 </div>
-                <Badge variant="default" size="md" className="font-semibold">
-                  91% Model Confidence
-                </Badge>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleReanalyzeRootCause}
+                  disabled={loadingRootCause}
+                  className="h-8 gap-1.5 text-xs text-slate-700 hover:text-blue-700 border-slate-200"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loadingRootCause ? "animate-spin text-blue-600" : ""}`} />
+                  <span>{loadingRootCause ? "Diagnosing..." : "Re-Analyze"}</span>
+                </Button>
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-4">
-              {/* Root Cause & ML Probability */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <motion.div whileHover={{ scale: 1.02 }} className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition-transform">
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Root Cause</span>
-                  <div className="text-sm font-bold text-slate-900 mt-1">
-                    {investigation?.root_cause || "Payment Method Degradation"}
-                  </div>
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">UPI PSP Latency Spike (+4.8x)</span>
-                </motion.div>
+            <CardContent className="space-y-4 pt-4">
+              {rootCauseError && (
+                <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                  <span>{rootCauseError}</span>
+                </div>
+              )}
 
-                <motion.div whileHover={{ scale: 1.02 }} className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition-transform">
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Recovery Probability</span>
-                  <div className="text-sm font-bold text-emerald-600 mt-1">
-                    {investigation ? formatPercentage(investigation.recovery_probability * 100) : "87.0%"}
+              {/* Diagnosis Badge & Confidence Meter */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Diagnosed Category</span>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold border ${getCategoryColor(displayRootCause)}`}>
+                      {formatCategoryName(displayRootCause)}
+                    </span>
                   </div>
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">
-                    Expected Yield: {investigation ? formatCurrency(investigation.expected_recovery) : "₹4,349"}
+                  <span className="text-[11px] text-slate-500 mt-1 block">
+                    Telemetry: {transaction.payment_method.toUpperCase()} • {transaction.bank || "HDFC"}
                   </span>
-                </motion.div>
+                </div>
 
-                <motion.div whileHover={{ scale: 1.02 }} className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition-transform">
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Selected Strategy</span>
-                  <div className="text-sm font-bold text-[#0052cc] mt-1 capitalize">
-                    {investigation?.recommended_action.replace("_", " ") || "Generate Payment Link"}
+                <div className="rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Diagnosis Confidence</span>
+                    <span className="text-sm font-bold text-blue-700">
+                      {Math.round(displayConfidence * 100)}%
+                    </span>
                   </div>
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">Via Razorpay Test Mode API</span>
-                </motion.div>
+                  <div className="mt-2">
+                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${displayConfidence >= 0.8 ? "bg-emerald-500" : displayConfidence >= 0.6 ? "bg-amber-500" : "bg-red-500"}`}
+                        style={{ width: `${Math.round(displayConfidence * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Validated against signal bounds [0.0 - 1.0]
+                  </span>
+                </div>
               </div>
 
-              {/* Evidence Checklist */}
-              <div>
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  Investigative Evidence & Anomaly Telemetry
+              {/* Factual Explanation Box */}
+              <div className="rounded-lg bg-slate-50/80 border border-slate-200/80 p-3 text-xs">
+                <span className="font-bold text-slate-800 text-[11px] uppercase tracking-wider block mb-1">
+                  AI Diagnostic Explanation
                 </span>
-                <div className="mt-2 space-y-1.5">
-                  {investigation?.evidence.map((item, idx) => (
+                <p className="text-slate-700 leading-relaxed font-sans">
+                  {displayExplanation}
+                </p>
+              </div>
+
+              {/* Factual Evidence Points Checklist */}
+              <div>
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block mb-2">
+                  Factual Signals & Investigative Evidence
+                </span>
+                <div className="space-y-1.5">
+                  {displayEvidence.map((item, idx) => (
                     <motion.div
                       key={idx}
                       initial={{ opacity: 0, x: -6 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.2, delay: idx * 0.06 }}
-                      className="flex items-start gap-2 text-xs text-slate-700 bg-white/80 p-2 rounded-lg border border-slate-200/60"
+                      transition={{ duration: 0.2, delay: idx * 0.05 }}
+                      className="flex items-start gap-2 text-xs text-slate-700 bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs"
                     >
                       <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <span>{item}</span>
+                      <span className="leading-snug">{item}</span>
                     </motion.div>
                   ))}
                 </div>
               </div>
+            </CardContent>
+          </Card>
 
-              {/* Policy RAG Section Citation */}
-              <div className="pt-2 border-t border-blue-100 space-y-2">
+          {/* Phase 6: Dedicated Relevant Merchant Policy (RAG) Card */}
+          <Card className="border-indigo-200 bg-gradient-to-br from-white via-indigo-50/20 to-purple-50/20 shadow-sm">
+            <CardHeader className="pb-3 border-b border-indigo-100">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-600 to-purple-700 text-white shadow-xs">
+                    <BookOpen className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-base text-slate-900">Relevant Merchant Policy (RAG)</CardTitle>
+                      <Badge variant="default" size="sm" className="bg-indigo-100 text-indigo-800 border-indigo-200 text-[10px]">
+                        merchant_policy.md
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-slate-500">Hybrid TF-IDF & keyword vector retrieval grounding AI actions in merchant rules</p>
+                  </div>
+                </div>
+
+                <Badge variant="success" className="bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold text-xs">
+                  {displayPolicyMatch}% Policy Match
+                </Badge>
+              </div>
+            </CardHeader>
+
+            <CardContent className="space-y-4 pt-4">
+              {/* Section Header & Policy Excerpt Quote */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <Scale className="h-3.5 w-3.5 text-indigo-600" />
+                    <span>Retrieved Section: § {displaySection}</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Source: {primaryChunk?.source || "merchant_policy.md"}
+                  </span>
+                </div>
+
+                <div className="rounded-lg bg-indigo-50/60 border-l-4 border-indigo-500 p-3.5 text-xs text-slate-800 font-mono leading-relaxed whitespace-pre-line shadow-xs">
+                  {displayPolicyRule}
+                </div>
+              </div>
+
+              {/* Policy-Grounded AI Interpretation */}
+              <div className="rounded-lg bg-white border border-indigo-200 p-3.5 shadow-xs">
+                <div className="flex items-center gap-1.5 text-indigo-950 font-bold text-xs uppercase tracking-wider mb-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Policy-Grounded AI Interpretation</span>
+                </div>
+                <p className="text-xs text-slate-700 leading-relaxed">
+                  {displayInterpretation}
+                </p>
+                <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
+                  <span className="font-semibold text-slate-600">Query Telemetry:</span>
+                  <span className="bg-slate-100 px-1.5 py-0.5 rounded font-mono text-slate-700">
+                    {policyContextData?.query || `${transaction.payment_method} ${displayRootCause}`}
+                  </span>
+                </div>
+              </div>
+
+              {/* Deterministic Guardrails Checklist */}
+              <div className="pt-2 border-t border-indigo-100 space-y-2">
                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                   <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                  <span>Deterministic Guardrails & Policy Citations</span>
+                  <span>Deterministic Guardrail Verifications</span>
                 </span>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -619,18 +770,11 @@ export default function TransactionDetailPage() {
                     </div>
                   ))}
                 </div>
-
-                {investigation?.rag_policy_reference && (
-                  <div className="flex items-start gap-2 text-[11px] text-slate-600 bg-blue-50/70 p-2.5 rounded-lg border border-blue-200">
-                    <BookOpen className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>Retrieved Policy Citation:</strong> {investigation.rag_policy_reference}</span>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
 
-          {/* Agent Execution Timeline */}
+          {/* Multi-Agent Execution Timeline */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2">

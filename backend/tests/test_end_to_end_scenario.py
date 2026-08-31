@@ -30,7 +30,7 @@ async def test_full_scenario_txn_4999_upi():
         analysis = res_analyze.json()["data"]
 
         assert analysis["transaction_id"] == "txn_4999_upi"
-        assert analysis["root_cause"] == "Payment Method Degradation"
+        assert analysis["root_cause"] in ["Payment Method Degradation", "payment_method_degradation"]
         assert analysis["recommended_action"] == "payment_link"
         assert analysis["policy_decision"] == "APPROVED"
         assert analysis["recovery_probability"] > 0.70
