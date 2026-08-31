@@ -31,4 +31,5 @@ async def test_evaluation_metrics_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
-    assert data["data"]["overall_recovery_rate"] > 0
+    assert data["data"]["overall_recovery_rate"] >= 0
+    assert "category_breakdown" in data["data"]

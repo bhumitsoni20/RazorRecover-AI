@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Any
 from dotenv import load_dotenv
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict

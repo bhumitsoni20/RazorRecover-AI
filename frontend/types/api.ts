@@ -237,11 +237,68 @@ export interface EvaluationMetricsResponse {
   actions_blocked_by_guardrails: number;
   actions_requiring_human_approval: number;
   avg_agent_latency_ms: number;
+  recovery_attempts?: number;
+  successful_recoveries?: number;
+  avg_recovery_probability?: number;
   category_breakdown: CategoryAccuracyBreakdown[];
+  agent_performance?: AgentPerformanceMetric[];
   ml_roc_auc_score: number;
   ml_precision: number;
   ml_recall: number;
   ml_f1_score: number;
+}
+
+export interface AgentPerformanceMetric {
+  agent_name: string;
+  display_name: string;
+  description: string;
+  executions: number;
+  success_count: number;
+  error_count: number;
+  avg_confidence: number;
+  avg_latency_ms: number;
+  status: string;
+}
+
+export interface EndToEndStepResult {
+  step_number: number;
+  step_name: string;
+  agent_name: string;
+  status: "PASS" | "FAIL" | string;
+  latency_ms: number;
+  summary: string;
+  details: Record<string, any>;
+}
+
+export interface EndToEndEvaluationResponse {
+  overall_status: "PASS" | "FAIL" | string;
+  total_latency_ms: number;
+  transaction_id: string;
+  amount: number;
+  currency: string;
+  recovery_link?: string;
+  recovered_amount: number;
+  steps: EndToEndStepResult[];
+  timestamp: string;
+}
+
+export interface GuardrailTestCaseResult {
+  case_id: string;
+  name: string;
+  scenario: string;
+  expected_verdict: string;
+  actual_verdict: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface GuardrailTestSuiteResponse {
+  total_cases: number;
+  passed_cases: number;
+  failed_cases: number;
+  all_passed: boolean;
+  results: GuardrailTestCaseResult[];
+  timestamp: string;
 }
 
 export interface AnomalyItem {

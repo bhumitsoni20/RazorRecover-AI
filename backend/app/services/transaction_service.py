@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from app.models.transaction import Transaction
@@ -63,39 +63,39 @@ class TransactionService:
         items: List[TransactionListItem] = []
         for txn, cust, risk, action in results:
             cust_succ_rate = (
-                cust.successful_transactions / max(cust.total_transactions, 1) if cust else 0.85
+                float(cust.successful_transactions) / max(int(cust.total_transactions), 1) if cust else 0.85
             )
             l_prob, r_prob, r_level, expl = RevenueRiskService.compute_loss_probability(
-                amount=txn.amount,
-                payment_method=txn.payment_method,
-                failure_reason=txn.failure_reason,
-                attempt_number=txn.attempt_number,
+                amount=float(txn.amount),
+                payment_method=str(txn.payment_method),
+                failure_reason=str(txn.failure_reason) if txn.failure_reason else None,
+                attempt_number=int(txn.attempt_number),
                 customer_success_rate=cust_succ_rate,
             )
-            rev_at_risk = round(txn.amount * l_prob, 2) if txn.status in ["failed", "abandoned", "pending"] else 0.0
+            rev_at_risk = round(float(txn.amount) * l_prob, 2) if txn.status in ["failed", "abandoned", "pending"] else 0.0
 
             items.append(
                 TransactionListItem(
-                    id=txn.id,
-                    customer_id=cust.id,
-                    customer_name=cust.name,
-                    customer_email=cust.email,
-                    amount=txn.amount,
-                    currency=txn.currency,
-                    payment_method=txn.payment_method,
-                    bank=txn.bank,
-                    status=txn.status,
-                    failure_reason=txn.failure_reason,
-                    attempt_number=txn.attempt_number,
-                    risk_score=risk.risk_score if risk else l_prob,
-                    recovery_probability=risk.recovery_probability if risk else r_prob,
+                    id=str(txn.id),
+                    customer_id=str(cust.id) if cust else "",
+                    customer_name=str(cust.name) if cust else "Unknown",
+                    customer_email=str(cust.email) if cust else "",
+                    amount=float(txn.amount),
+                    currency=str(txn.currency),
+                    payment_method=str(txn.payment_method),
+                    bank=str(txn.bank) if txn.bank else None,
+                    status=str(txn.status),
+                    failure_reason=str(txn.failure_reason) if txn.failure_reason else None,
+                    attempt_number=int(txn.attempt_number),
+                    risk_score=float(risk.risk_score) if (risk and risk.risk_score is not None) else l_prob,
+                    recovery_probability=float(risk.recovery_probability) if (risk and risk.recovery_probability is not None) else r_prob,
                     loss_probability=l_prob,
                     revenue_at_risk=rev_at_risk,
                     risk_level=r_level,
                     explanation=expl,
-                    ai_recommendation=action.action_type if action else "payment_link",
-                    policy_decision=action.policy_decision if action else ("APPROVED" if txn.amount <= 25000 else "HUMAN_APPROVAL_REQUIRED"),
-                    created_at=txn.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    ai_recommendation=str(action.action_type) if action and action.action_type else "payment_link",
+                    policy_decision=str(action.policy_decision) if action and action.policy_decision else ("APPROVED" if float(txn.amount) <= 25000 else "HUMAN_APPROVAL_REQUIRED"),
+                    created_at=txn.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(txn.created_at, "strftime") else str(txn.created_at),
                 )
             )
 
@@ -121,17 +121,17 @@ class TransactionService:
         actions_res = await db.execute(
             select(RecoveryAction).where(RecoveryAction.transaction_id == transaction_id)
         )
-        actions = actions_res.scalars().all()
+        actions: list[Any] = list(actions_res.scalars().all())
 
         # Run deterministic policy check
         recommended_action = "payment_link"
-        failure_reason = txn.failure_reason or "upi_timeout"
+        failure_reason = str(txn.failure_reason) if txn.failure_reason else "upi_timeout"
         verdict, checks, reasons = PolicyEngine.evaluate(
-            amount=txn.amount,
+            amount=float(txn.amount),
             proposed_action=recommended_action,
             failure_reason=failure_reason,
-            attempt_number=txn.attempt_number,
-            customer_risk_score=risk.risk_score if risk else 0.15,
+            attempt_number=int(txn.attempt_number),
+            customer_risk_score=float(risk.risk_score) if (risk and risk.risk_score is not None) else 0.15,
         )
 
         investigation = AIInvestigation(
@@ -139,56 +139,56 @@ class TransactionService:
             confidence=0.91,
             evidence=[
                 f"UPI failure rate increased 4.8x during attempt window in {txn.bank or 'NPCI/HDFC'}",
-                f"Customer historical success rate: {int((cust.successful_transactions / max(cust.total_transactions, 1)) * 100)}%",
+                f"Customer historical success rate: {int((float(cust.successful_transactions) / max(int(cust.total_transactions), 1)) * 100)}%" if cust else "85%",
                 "No chargeback or suspicious velocity detected in last 30 days",
                 "Similar degradation incidents recovered successfully via Payment Link (92% conversion)",
             ],
-            recovery_probability=risk.recovery_probability if risk else 0.87,
+            recovery_probability=float(risk.recovery_probability) if (risk and risk.recovery_probability is not None) else 0.87,
             recommended_action="Generate Payment Link",
-            expected_recovery=risk.expected_recovery if risk else round(txn.amount * 0.87, 2),
+            expected_recovery=float(risk.expected_recovery) if (risk and risk.expected_recovery is not None) else round(float(txn.amount) * 0.87, 2),
             policy_decision=verdict,
             policy_checks=checks,
             rag_policy_reference="Merchant Policy §2.1: Payment links allowed autonomously for technical degradation <= ₹25,000.",
         )
 
         return TransactionDetailResponse(
-            id=txn.id,
-            merchant_id=txn.merchant_id,
-            amount=txn.amount,
-            currency=txn.currency,
-            payment_method=txn.payment_method,
-            payment_gateway=txn.payment_gateway,
-            bank=txn.bank,
-            status=txn.status,
-            failure_reason=txn.failure_reason,
-            attempt_number=txn.attempt_number,
-            razorpay_payment_id=txn.razorpay_payment_id,
-            razorpay_order_id=txn.razorpay_order_id,
-            created_at=txn.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            updated_at=txn.updated_at.strftime("%Y-%m-%d %H:%M:%S"),
+            id=str(txn.id),
+            merchant_id=str(txn.merchant_id),
+            amount=float(txn.amount),
+            currency=str(txn.currency),
+            payment_method=str(txn.payment_method),
+            payment_gateway=str(txn.payment_gateway),
+            bank=str(txn.bank) if txn.bank else None,
+            status=str(txn.status),
+            failure_reason=str(txn.failure_reason) if txn.failure_reason else None,
+            attempt_number=int(txn.attempt_number),
+            razorpay_payment_id=str(txn.razorpay_payment_id) if txn.razorpay_payment_id else None,
+            razorpay_order_id=str(txn.razorpay_order_id) if txn.razorpay_order_id else None,
+            created_at=txn.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(txn.created_at, "strftime") else str(txn.created_at),
+            updated_at=txn.updated_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(txn.updated_at, "strftime") else str(txn.updated_at),
             customer=CustomerBrief(
-                id=cust.id,
-                name=cust.name,
-                email=cust.email,
-                phone=cust.phone,
-                total_transactions=cust.total_transactions,
-                successful_transactions=cust.successful_transactions,
-                failed_transactions=cust.failed_transactions,
-                lifetime_value=cust.lifetime_value,
+                id=str(cust.id),
+                name=str(cust.name),
+                email=str(cust.email),
+                phone=str(cust.phone),
+                total_transactions=int(cust.total_transactions),
+                successful_transactions=int(cust.successful_transactions),
+                failed_transactions=int(cust.failed_transactions),
+                lifetime_value=float(cust.lifetime_value),
             ),
             investigation=investigation,
             recovery_actions=[
                 RecoveryActionBrief(
-                    id=a.id,
-                    action_type=a.action_type,
-                    reason=a.reason,
-                    confidence=a.confidence,
-                    policy_decision=a.policy_decision,
-                    status=a.status,
-                    amount_recovered=a.amount_recovered,
-                    external_reference=a.external_reference,
-                    created_at=a.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                    completed_at=a.completed_at.strftime("%Y-%m-%d %H:%M:%S") if a.completed_at else None,
+                    id=str(a.id),
+                    action_type=str(a.action_type),
+                    reason=str(a.reason),
+                    confidence=float(a.confidence or 0.0),
+                    policy_decision=str(a.policy_decision),
+                    status=str(a.status),
+                    amount_recovered=float(a.amount_recovered or 0.0),
+                    external_reference=str(a.external_reference) if a.external_reference else None,
+                    created_at=a.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(a.created_at, "strftime") else str(a.created_at),
+                    completed_at=a.completed_at.strftime("%Y-%m-%d %H:%M:%S") if (a.completed_at and hasattr(a.completed_at, "strftime")) else (str(a.completed_at) if a.completed_at else None),
                 )
                 for a in actions
             ],

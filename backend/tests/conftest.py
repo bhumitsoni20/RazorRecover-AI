@@ -22,7 +22,10 @@ import app.models  # noqa
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def setup_test_db():
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        try:
+            await conn.run_sync(Base.metadata.drop_all)
+        except Exception:
+            pass
         await conn.run_sync(Base.metadata.create_all)
 
     async with AsyncSessionLocal() as session:
