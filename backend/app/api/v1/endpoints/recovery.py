@@ -17,6 +17,7 @@ from app.schemas.recovery import (
 )
 from app.schemas.common import APIResponse
 from app.services.recovery_service import RecoveryService
+from app.integrations.razorpay_service import razorpay_service
 
 router = APIRouter()
 
@@ -34,11 +35,22 @@ async def list_recovery_actions(
     )
 
     if status and status != "all":
-        query = query.where(RecoveryAction.status == status)
+        if status == "pending_approval":
+            query = query.where(
+                RecoveryAction.policy_decision == "HUMAN_APPROVAL_REQUIRED",
+                RecoveryAction.status == "pending",
+            )
+        elif status == "automated":
+            query = query.where(RecoveryAction.policy_decision == "APPROVED")
+        elif status in ["recovered", "completed"]:
+            query = query.where(RecoveryAction.status.in_(["completed", "recovered"]))
+        else:
+            query = query.where(RecoveryAction.status == status)
+
     if policy_decision and policy_decision != "all":
         query = query.where(RecoveryAction.policy_decision == policy_decision)
 
-    query = query.order_by(desc(RecoveryAction.created_at)).limit(50)
+    query = query.order_by(desc(RecoveryAction.created_at)).limit(100)
     results = (await db.execute(query)).all()
 
     items: List[RecoveryActionItem] = []
@@ -119,3 +131,31 @@ async def approve_recovery(
         approver_note=request.approver_note or "Approved by Merchant Admin",
     )
     return APIResponse(success=True, data=result)
+
+
+@router.post("/{transaction_id}/create-order", response_model=APIResponse[Dict[str, Any]])
+async def create_razorpay_order(
+    transaction_id: str = Path(...),
+    db: AsyncSession = Depends(get_db),
+):
+    txn_res = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
+    txn = txn_res.scalars().first()
+    raw_amount = getattr(txn, "amount", None)
+    amount: float = float(raw_amount) if raw_amount is not None else 4999.0
+    raw_currency = getattr(txn, "currency", None)
+    currency: str = str(raw_currency) if raw_currency else "INR"
+    order = await razorpay_service.create_order(
+        amount=amount,
+        currency=currency,
+        receipt=f"rcpt_{transaction_id}",
+        notes={"transaction_id": transaction_id},
+    )
+    return APIResponse(
+        success=True,
+        data={
+            "order_id": order.get("id"),
+            "amount": int(amount * 100),
+            "currency": currency,
+            "key_id": razorpay_service.key_id,
+        },
+    )

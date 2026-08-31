@@ -59,6 +59,10 @@ class TransactionListItem(BaseModel):
     attempt_number: int
     risk_score: Optional[float] = None
     recovery_probability: Optional[float] = None
+    loss_probability: Optional[float] = None
+    revenue_at_risk: Optional[float] = None
+    risk_level: Optional[str] = None  # LOW, MEDIUM, HIGH, CRITICAL
+    explanation: Optional[str] = None
     ai_recommendation: Optional[str] = None
     policy_decision: Optional[str] = None
     created_at: str
@@ -77,6 +81,9 @@ class TransactionDetailResponse(BaseModel):
     attempt_number: int
     razorpay_payment_id: Optional[str] = None
     razorpay_order_id: Optional[str] = None
+    loss_probability: Optional[float] = None
+    revenue_at_risk: Optional[float] = None
+    risk_level: Optional[str] = None
     created_at: str
     updated_at: str
     customer: CustomerBrief

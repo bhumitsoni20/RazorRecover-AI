@@ -303,7 +303,7 @@ export function LiveExecutionModal({
                   Close
                 </Button>
                 <a
-                  href={paymentLink}
+                  href={`/pay/${transactionId}`}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow hover:bg-emerald-700 transition-colors"

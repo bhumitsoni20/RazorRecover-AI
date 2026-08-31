@@ -68,7 +68,7 @@ export default function TransactionDetailPage() {
       const hasAction = res.recovery_actions && res.recovery_actions.length > 0;
       const latestAction = hasAction ? res.recovery_actions[0] : null;
 
-      if (latestAction && latestAction.external_reference) {
+      if (latestAction && latestAction.external_reference && latestAction.status === "executed") {
         setExecutionResult({
           status: latestAction.status,
           razorpay_payment_link: latestAction.external_reference,
@@ -268,6 +268,10 @@ export default function TransactionDetailPage() {
 
   const investigation = transaction.investigation;
   const customer = transaction.customer;
+  const hasExecutedRecovery = Boolean(
+    executionResult?.status === "executed" ||
+    (transaction?.recovery_actions && transaction.recovery_actions.some((a) => a.status === "executed" && a.external_reference))
+  );
 
   return (
     <PageTransition className="space-y-6">
@@ -307,10 +311,10 @@ export default function TransactionDetailPage() {
                 {transaction.id}
               </h1>
               <Badge
-                variant={isRecovered ? "success" : isBlocked ? "danger" : isHumanReview ? "warning" : executionResult ? "warning" : "danger"}
+                variant={isRecovered ? "success" : isBlocked ? "danger" : isHumanReview ? "warning" : hasExecutedRecovery ? "warning" : "danger"}
                 size="sm"
               >
-                {isRecovered ? `RECOVERED (${formatCurrency(transaction.amount)})` : isBlocked ? "BLOCKED" : isHumanReview ? "HUMAN REVIEW REQUIRED" : executionResult ? "Payment Link Sent" : transaction.status}
+                {isRecovered ? `RECOVERED (${formatCurrency(transaction.amount)})` : isBlocked ? "BLOCKED" : isHumanReview ? "HUMAN REVIEW REQUIRED" : hasExecutedRecovery ? "Payment Link Sent" : transaction.status}
               </Badge>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -320,7 +324,7 @@ export default function TransactionDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {!isRecovered && !isBlocked && (
+          {!isRecovered && !isBlocked && hasExecutedRecovery && (
             <Button
               onClick={() => setShowWebhookModal(true)}
               variant="outline"
@@ -381,7 +385,7 @@ export default function TransactionDetailPage() {
       </motion.div>
 
       {/* Prominent Webhook Simulator Call-To-Action Banner */}
-      {!isRecovered && !isBlocked && (
+      {!isRecovered && !isBlocked && hasExecutedRecovery && (
         <motion.div
           variants={itemFadeUp}
           className="rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 via-teal-50/60 to-emerald-50/30 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
@@ -638,6 +642,7 @@ export default function TransactionDetailPage() {
               <AgentExecutionTimeline
                 steps={timelineSteps}
                 paymentLinkUrl={executionResult?.razorpay_payment_link}
+                transactionId={transaction.id}
                 isExecuting={isExecuting}
               />
             </CardContent>

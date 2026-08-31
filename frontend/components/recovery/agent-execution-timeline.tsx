@@ -17,10 +17,11 @@ export interface TimelineStep {
 interface AgentExecutionTimelineProps {
   steps: TimelineStep[];
   paymentLinkUrl?: string;
+  transactionId?: string;
   isExecuting?: boolean;
 }
 
-export function AgentExecutionTimeline({ steps, paymentLinkUrl, isExecuting }: AgentExecutionTimelineProps) {
+export function AgentExecutionTimeline({ steps, paymentLinkUrl, transactionId, isExecuting }: AgentExecutionTimelineProps) {
   return (
     <div className="space-y-4">
       <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
@@ -99,12 +100,12 @@ export function AgentExecutionTimeline({ steps, paymentLinkUrl, isExecuting }: A
               </div>
             </div>
             <a
-              href={paymentLinkUrl}
+              href={transactionId ? `/pay/${transactionId}` : (paymentLinkUrl || "/pay/txn_4999_upi")}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow hover:bg-emerald-700 transition-colors"
             >
-              <span>Open Link</span>
+              <span>Open Payment Link</span>
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           </div>

@@ -26,11 +26,15 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
 
-    # Database: Always use absolute database path so backend and scripts share exact same DB
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        f"sqlite+aiosqlite:///{default_db_path}"
-    )
+    DATABASE_URL: str = f"sqlite+aiosqlite:///{default_db_path}"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def validate_database_url(cls, v: Any) -> str:
+        val = str(v) if v else ""
+        if "sqlite" in val and ("./" in val or val.endswith("razorrecover.db") and not (":/" in val or ":\\" in val)):
+            return f"sqlite+aiosqlite:///{default_db_path}"
+        return val if val else f"sqlite+aiosqlite:///{default_db_path}"
 
     # Redis
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")

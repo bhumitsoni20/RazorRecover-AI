@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -12,6 +12,7 @@ import {
   ArrowRight,
   RefreshCw,
   ExternalLink,
+  Zap,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,38 +24,77 @@ import { formatCurrency, formatPercentage } from "@/lib/formatters";
 import { PageTransition, itemFadeUp } from "@/components/animations/page-transition";
 
 export default function RecoveryPage() {
-  const [actions, setActions] = useState<RecoveryActionItem[]>([]);
+  const [allActions, setAllActions] = useState<RecoveryActionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
 
   const loadActions = async () => {
     setLoading(true);
-    const res = await apiClient.getRecoveryActions(activeTab);
-    setActions(res);
-    setLoading(false);
+    try {
+      const res = await apiClient.getRecoveryActions();
+      setAllActions(res);
+    } catch (e) {
+      console.error("Failed to load recovery actions:", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     loadActions();
-  }, [activeTab]);
+  }, []);
 
   const handleApprove = async (transactionId: string) => {
     await apiClient.approveRecovery(transactionId, true);
-    loadActions();
+    await loadActions();
   };
 
   const handleReject = async (transactionId: string) => {
     await apiClient.approveRecovery(transactionId, false);
-    loadActions();
+    await loadActions();
   };
 
-  const filteredActions = actions.filter((act) => {
-    if (activeTab === "all") return true;
-    if (activeTab === "pending_approval") return act.policy_decision === "HUMAN_APPROVAL_REQUIRED" && act.status === "pending";
-    if (activeTab === "recovered") return act.status === "recovered";
-    if (activeTab === "automated") return act.policy_decision === "APPROVED";
-    return true;
-  });
+  // Counts across all categories
+  const countAll = allActions.length;
+  const countHumanReview = allActions.filter(
+    (a) =>
+      (a.policy_decision === "HUMAN_APPROVAL_REQUIRED" || a.status === "pending" || a.status === "pending_approval") &&
+      a.status !== "completed" &&
+      a.status !== "recovered"
+  ).length;
+  const countAutonomous = allActions.filter(
+    (a) => a.policy_decision === "APPROVED"
+  ).length;
+  const countRecovered = allActions.filter(
+    (a) =>
+      a.status === "completed" ||
+      a.status === "recovered" ||
+      (a.amount_recovered && a.amount_recovered > 0)
+  ).length;
+
+  // Filter items based on activeTab
+  const filteredActions = useMemo(() => {
+    if (activeTab === "pending_approval") {
+      return allActions.filter(
+        (a) =>
+          (a.policy_decision === "HUMAN_APPROVAL_REQUIRED" || a.status === "pending" || a.status === "pending_approval") &&
+          a.status !== "completed" &&
+          a.status !== "recovered"
+      );
+    }
+    if (activeTab === "automated") {
+      return allActions.filter((a) => a.policy_decision === "APPROVED");
+    }
+    if (activeTab === "recovered") {
+      return allActions.filter(
+        (a) =>
+          a.status === "completed" ||
+          a.status === "recovered" ||
+          (a.amount_recovered && a.amount_recovered > 0)
+      );
+    }
+    return allActions;
+  }, [allActions, activeTab]);
 
   return (
     <PageTransition className="space-y-6">
@@ -73,7 +113,7 @@ export default function RecoveryPage() {
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" size="sm" onClick={loadActions} className="gap-1.5 hover:shadow-xs transition-all">
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             <span>Refresh Queue</span>
           </Button>
         </div>
@@ -83,10 +123,10 @@ export default function RecoveryPage() {
       <motion.div variants={itemFadeUp}>
         <Tabs
           tabs={[
-            { id: "all", label: "All Recovery Actions", count: actions.length },
-            { id: "pending_approval", label: "Requires Human Review", count: actions.filter(a => a.policy_decision === "HUMAN_APPROVAL_REQUIRED" && a.status === "pending").length },
-            { id: "automated", label: "Autonomous Actions", count: actions.filter(a => a.policy_decision === "APPROVED").length },
-            { id: "recovered", label: "Recovered Revenue", count: actions.filter(a => a.status === "recovered").length },
+            { id: "all", label: "All Recovery Actions", count: countAll },
+            { id: "pending_approval", label: "Requires Human Review", count: countHumanReview },
+            { id: "automated", label: "Autonomous Actions", count: countAutonomous },
+            { id: "recovered", label: "Recovered Revenue", count: countRecovered },
           ]}
           activeTab={activeTab}
           onTabChange={setActiveTab}
@@ -112,86 +152,127 @@ export default function RecoveryPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredActions.map((act, idx) => {
-                    const needsApproval = act.policy_decision === "HUMAN_APPROVAL_REQUIRED" && act.status === "pending";
-                    const isRecovered = act.status === "recovered";
+                  {filteredActions.length > 0 ? (
+                    filteredActions.map((act, idx) => {
+                      const needsApproval =
+                        act.policy_decision === "HUMAN_APPROVAL_REQUIRED" &&
+                        (act.status === "pending" || act.status === "pending_approval");
+                      const isCompletedOrRecovered =
+                        act.status === "completed" || act.status === "recovered" || (act.amount_recovered && act.amount_recovered > 0);
 
-                    return (
-                      <motion.tr
-                        key={act.id}
-                        initial={{ opacity: 0, y: 5 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.2, delay: idx * 0.04 }}
-                        className="hover:bg-slate-50/60 transition-colors"
-                      >
-                        <td className="px-4 py-3.5 font-mono font-medium text-slate-900">
-                          <Link href={`/transactions/${act.transaction_id}`} className="hover:underline text-[#0052cc]">
-                            {act.transaction_id}
-                          </Link>
-                        </td>
-                        <td className="px-4 py-3.5 font-semibold text-slate-800">
-                          {act.customer_name}
-                        </td>
-                        <td className="px-4 py-3.5 font-bold text-slate-900">
-                          {formatCurrency(act.amount)}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                            <Sparkles className="h-3.5 w-3.5 text-blue-600" />
-                            <span className="capitalize">{act.action_type.replace("_", " ")}</span>
-                          </div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">{act.reason}</div>
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <Badge
-                            variant={act.policy_decision === "APPROVED" ? "success" : act.policy_decision === "BLOCKED" ? "danger" : "warning"}
-                            size="sm"
-                          >
-                            {act.policy_decision}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <Badge
-                            variant={isRecovered ? "success" : act.status === "pending" ? "warning" : "default"}
-                            size="sm"
-                          >
-                            {act.status}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3.5 font-bold text-emerald-600">
-                          {act.amount_recovered > 0 ? formatCurrency(act.amount_recovered) : "—"}
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          {needsApproval ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <Button
-                                size="sm"
-                                variant="success"
-                                className="h-7 px-2 text-[11px] hover:scale-105 active:scale-95 transition-transform"
-                                onClick={() => handleApprove(act.transaction_id)}
-                              >
-                                Approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-[11px] text-red-600 border-red-200 hover:bg-red-50"
-                                onClick={() => handleReject(act.transaction_id)}
-                              >
-                                Reject
-                              </Button>
-                            </div>
-                          ) : (
-                            <Link href={`/transactions/${act.transaction_id}`}>
-                              <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs hover:border-blue-400 hover:text-[#0052cc] transition-all">
-                                Details
-                              </Button>
+                      return (
+                        <motion.tr
+                          key={act.id}
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.2, delay: idx * 0.03 }}
+                          className="hover:bg-slate-50/60 transition-colors"
+                        >
+                          <td className="px-4 py-3.5 font-mono font-medium text-slate-900">
+                            <Link href={`/transactions/${act.transaction_id}`} className="hover:underline text-[#0052cc]">
+                              {act.transaction_id}
                             </Link>
-                          )}
-                        </td>
-                      </motion.tr>
-                    );
-                  })}
+                          </td>
+                          <td className="px-4 py-3.5 font-semibold text-slate-800">
+                            {act.customer_name}
+                          </td>
+                          <td className="px-4 py-3.5 font-bold text-slate-900">
+                            {formatCurrency(act.amount)}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-1.5 font-medium text-slate-800">
+                              <Sparkles className="h-3.5 w-3.5 text-blue-600" />
+                              <span className="capitalize">{act.action_type.replace("_", " ")}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">{act.reason}</div>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <Badge
+                              variant={
+                                act.policy_decision === "APPROVED"
+                                  ? "success"
+                                  : act.policy_decision === "BLOCKED"
+                                  ? "danger"
+                                  : "warning"
+                              }
+                              size="sm"
+                            >
+                              {act.policy_decision === "HUMAN_APPROVAL_REQUIRED" ? "Human Review Required" : act.policy_decision}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <Badge
+                              variant={
+                                isCompletedOrRecovered
+                                  ? "success"
+                                  : act.status === "pending" || act.status === "pending_approval"
+                                  ? "warning"
+                                  : act.status === "failed"
+                                  ? "danger"
+                                  : "neutral"
+                              }
+                              size="sm"
+                            >
+                              {act.status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3.5 font-bold text-emerald-600">
+                            {act.amount_recovered > 0 ? formatCurrency(act.amount_recovered) : "—"}
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            {needsApproval ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant="success"
+                                  className="h-7 px-2.5 text-[11px] hover:scale-105 active:scale-95 transition-transform"
+                                  onClick={() => handleApprove(act.transaction_id)}
+                                >
+                                  Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-[11px] text-red-600 border-red-200 hover:bg-red-50"
+                                  onClick={() => handleReject(act.transaction_id)}
+                                >
+                                  Reject
+                                </Button>
+                              </div>
+                            ) : (
+                              <Link href={`/transactions/${act.transaction_id}`}>
+                                <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs hover:border-blue-400 hover:text-[#0052cc] transition-all">
+                                  Details
+                                </Button>
+                              </Link>
+                            )}
+                          </td>
+                        </motion.tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-400">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <CheckCircle2 className="h-8 w-8 text-emerald-500/80" />
+                          <span className="text-sm font-semibold text-slate-700">
+                            {activeTab === "pending_approval"
+                              ? "No actions pending human approval"
+                              : activeTab === "automated"
+                              ? "No autonomous actions found"
+                              : activeTab === "recovered"
+                              ? "No recovered revenue actions found"
+                              : "No recovery actions recorded yet"}
+                          </span>
+                          <p className="text-xs text-slate-400">
+                            {activeTab === "pending_approval"
+                              ? "All high-value thresholds and safety guardrails are operating within policy limits."
+                              : "Actions dispatched by AI agents will appear here in real-time."}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

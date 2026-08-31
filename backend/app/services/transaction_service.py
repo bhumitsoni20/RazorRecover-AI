@@ -14,6 +14,7 @@ from app.schemas.transaction import (
     RecoveryActionBrief,
 )
 from app.policies.policy_engine import PolicyEngine
+from app.services.revenue_risk import RevenueRiskService
 
 
 class TransactionService:
@@ -61,6 +62,18 @@ class TransactionService:
 
         items: List[TransactionListItem] = []
         for txn, cust, risk, action in results:
+            cust_succ_rate = (
+                cust.successful_transactions / max(cust.total_transactions, 1) if cust else 0.85
+            )
+            l_prob, r_prob, r_level, expl = RevenueRiskService.compute_loss_probability(
+                amount=txn.amount,
+                payment_method=txn.payment_method,
+                failure_reason=txn.failure_reason,
+                attempt_number=txn.attempt_number,
+                customer_success_rate=cust_succ_rate,
+            )
+            rev_at_risk = round(txn.amount * l_prob, 2) if txn.status in ["failed", "abandoned", "pending"] else 0.0
+
             items.append(
                 TransactionListItem(
                     id=txn.id,
@@ -74,10 +87,14 @@ class TransactionService:
                     status=txn.status,
                     failure_reason=txn.failure_reason,
                     attempt_number=txn.attempt_number,
-                    risk_score=risk.risk_score if risk else 0.18,
-                    recovery_probability=risk.recovery_probability if risk else 0.85,
+                    risk_score=risk.risk_score if risk else l_prob,
+                    recovery_probability=risk.recovery_probability if risk else r_prob,
+                    loss_probability=l_prob,
+                    revenue_at_risk=rev_at_risk,
+                    risk_level=r_level,
+                    explanation=expl,
                     ai_recommendation=action.action_type if action else "payment_link",
-                    policy_decision=action.policy_decision if action else "APPROVED",
+                    policy_decision=action.policy_decision if action else ("APPROVED" if txn.amount <= 25000 else "HUMAN_APPROVAL_REQUIRED"),
                     created_at=txn.created_at.strftime("%Y-%m-%d %H:%M:%S"),
                 )
             )

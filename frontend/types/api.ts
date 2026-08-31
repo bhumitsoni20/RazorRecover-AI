@@ -118,6 +118,10 @@ export interface TransactionListItem {
   attempt_number: number;
   risk_score?: number;
   recovery_probability?: number;
+  loss_probability?: number;
+  revenue_at_risk?: number;
+  risk_level?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | string;
+  explanation?: string;
   ai_recommendation?: string;
   policy_decision?: string;
   created_at: string;
@@ -136,6 +140,9 @@ export interface TransactionDetailResponse {
   attempt_number: number;
   razorpay_payment_id?: string;
   razorpay_order_id?: string;
+  loss_probability?: number;
+  revenue_at_risk?: number;
+  risk_level?: string;
   created_at: string;
   updated_at: string;
   customer: CustomerBrief;
@@ -172,6 +179,21 @@ export interface AuditLogItem {
   created_at: string;
 }
 
+export interface AgentRunItem {
+  id: string;
+  agent_name: string;
+  transaction_id: string;
+  status: "success" | "failed" | "skipped";
+  latency_ms: number;
+  trigger?: string;
+  tokens_used?: number;
+  started_at?: string;
+  completed_at?: string;
+  created_at?: string;
+  input_data?: Record<string, any>;
+  output_data?: Record<string, any>;
+}
+
 export interface AgentStatusCard {
   name: string;
   role: string;
@@ -179,27 +201,24 @@ export interface AgentStatusCard {
   total_runs: number;
   success_rate: number;
   avg_latency_ms: number;
-  last_run_at: string;
-}
-
-export interface AgentRunItem {
-  id: string;
-  transaction_id?: string;
-  agent_name: string;
-  status: string;
-  started_at: string;
-  completed_at?: string;
-  latency_ms: number;
-  input_data?: Record<string, any>;
-  output_data?: Record<string, any>;
+  last_active?: string;
+  last_run_at?: string;
+  specialization?: string;
 }
 
 export interface AgentsOverviewResponse {
   agents: AgentStatusCard[];
   recent_runs: AgentRunItem[];
+  system_health?: {
+    status: "HEALTHY" | "DEGRADED" | "CRITICAL";
+    active_guardrails: number;
+    rag_retrieval_latency_ms: number;
+    audit_chain_verified: boolean;
+    gemini_connected: boolean;
+  };
 }
 
-export interface FailureCategoryMetric {
+export interface CategoryAccuracyBreakdown {
   category: string;
   total_failures: number;
   predicted_correctly: number;
@@ -218,9 +237,43 @@ export interface EvaluationMetricsResponse {
   actions_blocked_by_guardrails: number;
   actions_requiring_human_approval: number;
   avg_agent_latency_ms: number;
-  category_breakdown: FailureCategoryMetric[];
+  category_breakdown: CategoryAccuracyBreakdown[];
   ml_roc_auc_score: number;
   ml_precision: number;
   ml_recall: number;
   ml_f1_score: number;
+}
+
+export interface AnomalyItem {
+  anomaly_type: string;
+  payment_method: string;
+  baseline_rate: number;
+  current_rate: number;
+  spike_multiplier: number;
+  recent_failed_count?: number;
+  recent_total_count?: number;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | string;
+  message: string;
+}
+
+export interface RiskSourceBreakdown {
+  category: string;
+  amount: number;
+  percentage: number;
+  transaction_count: number;
+  color: string;
+}
+
+export interface RevenueRiskSummaryResponse {
+  total_revenue_at_risk: number;
+  total_gross_failed_volume: number;
+  currency: string;
+  transaction_count: number;
+  average_loss_probability: number;
+  risk_distribution: Record<string, number>;
+  top_risk_sources: RiskSourceBreakdown[];
+  anomaly_detected: boolean;
+  anomaly_message?: string;
+  anomalies: AnomalyItem[];
+  calculated_at: string;
 }
