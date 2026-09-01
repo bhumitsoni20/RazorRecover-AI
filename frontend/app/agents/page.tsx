@@ -127,7 +127,7 @@ export default function AgentsPage() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs min-w-[600px]">
                 <thead className="bg-slate-50/75 border-y border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
                   <tr>
                     <th className="px-4 py-3">Run ID</th>

@@ -95,11 +95,11 @@ export default function TransactionsPage() {
                 />
               </div>
 
-              <div className="flex items-center gap-2 w-full md:w-auto">
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full md:w-auto">
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 focus:outline-none cursor-pointer"
+                  className="h-9 flex-1 sm:flex-initial rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 focus:outline-none cursor-pointer"
                 >
                   <option value="all">All Statuses</option>
                   <option value="failed">Failed</option>
@@ -111,7 +111,7 @@ export default function TransactionsPage() {
                 <select
                   value={methodFilter}
                   onChange={(e) => setMethodFilter(e.target.value)}
-                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 focus:outline-none cursor-pointer"
+                  className="h-9 flex-1 sm:flex-initial rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 focus:outline-none cursor-pointer"
                 >
                   <option value="all">All Methods</option>
                   <option value="upi">UPI</option>
@@ -120,7 +120,7 @@ export default function TransactionsPage() {
                   <option value="subscription">Subscription</option>
                 </select>
 
-                <Button type="submit" variant="secondary" size="sm" className="h-9 px-3 hover:bg-slate-200 transition-all">
+                <Button type="submit" variant="secondary" size="sm" className="h-9 px-4 w-full sm:w-auto hover:bg-slate-200 transition-all">
                   Search
                 </Button>
               </div>
@@ -134,7 +134,7 @@ export default function TransactionsPage() {
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs min-w-[750px]">
                 <thead className="bg-slate-50/75 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
                   <tr>
                     <th className="px-4 py-3">ID / Time</th>

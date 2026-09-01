@@ -236,13 +236,13 @@ export default function EvaluationPage() {
             {/* If test has been run */}
             {e2eResult && (
               <div className="space-y-4">
-                <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg p-4 shadow-xs">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${e2eResult.overall_status === "PASS" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white border border-slate-200 rounded-lg p-4 gap-3 shadow-xs">
+                  <div className="flex items-start sm:items-center gap-3">
+                    <div className={`p-2 rounded-full shrink-0 ${e2eResult.overall_status === "PASS" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
                       {e2eResult.overall_status === "PASS" ? <CheckCircle className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-slate-900 text-sm">Evaluation Result:</span>
                         <Badge className={e2eResult.overall_status === "PASS" ? "bg-emerald-600 text-white font-bold" : "bg-red-600 text-white font-bold"}>
                           {e2eResult.overall_status} (11 / 11 Steps Verified)
@@ -253,8 +253,8 @@ export default function EvaluationPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs text-slate-400 font-semibold uppercase">Total Pipeline Latency</div>
+                  <div className="text-left sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
+                    <div className="text-[10px] sm:text-xs text-slate-400 font-semibold uppercase">Total Latency</div>
                     <div className="text-base font-bold font-mono text-slate-800">{e2eResult.total_latency_ms} ms</div>
                   </div>
                 </div>
@@ -270,22 +270,22 @@ export default function EvaluationPage() {
                       >
                         <div
                           onClick={() => setExpandedStep(isExpanded ? null : step.step_number)}
-                          className="flex items-center justify-between p-3.5 cursor-pointer select-none"
+                          className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-3.5 gap-2.5 cursor-pointer select-none"
                         >
-                          <div className="flex items-center gap-3">
-                            <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center font-mono">
+                          <div className="flex items-start sm:items-center gap-2.5 sm:gap-3">
+                            <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center font-mono shrink-0 mt-0.5 sm:mt-0">
                               {step.step_number}
                             </span>
                             <div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                                 <span className="font-semibold text-slate-800 text-xs">{step.step_name}</span>
                                 <span className="text-[10px] text-slate-400 font-mono">({step.agent_name})</span>
                               </div>
-                              <p className="text-xs text-slate-500 mt-0.5">{step.summary}</p>
+                              <p className="text-xs text-slate-500 mt-0.5 leading-snug">{step.summary}</p>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
                             <Badge variant="outline" className="font-mono text-[10px] bg-slate-50 text-slate-600">
                               {step.latency_ms} ms
                             </Badge>
@@ -406,7 +406,7 @@ export default function EvaluationPage() {
         <Card className="border-slate-200">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs min-w-[700px]">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
                   <tr>
                     <th className="px-4 py-3">Case ID</th>
@@ -466,7 +466,7 @@ export default function EvaluationPage() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs min-w-[600px]">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
                   <tr>
                     <th className="px-4 py-3">Failure Category</th>

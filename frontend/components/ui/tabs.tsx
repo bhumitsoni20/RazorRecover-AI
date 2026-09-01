@@ -10,7 +10,7 @@ export interface TabsProps {
 
 export function Tabs({ tabs, activeTab, onTabChange, className }: TabsProps) {
   return (
-    <div className={cn("flex space-x-1 border-b border-slate-200 pb-px", className)}>
+    <div className={cn("flex space-x-1 border-b border-slate-200 pb-px overflow-x-auto no-scrollbar", className)}>
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         return (
@@ -18,7 +18,7 @@ export function Tabs({ tabs, activeTab, onTabChange, className }: TabsProps) {
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             className={cn(
-              "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all duration-150",
+              "flex items-center gap-2 px-3.5 py-2.5 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap shrink-0 transition-all duration-150",
               isActive
                 ? "border-[#0052cc] text-[#0052cc]"
                 : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"

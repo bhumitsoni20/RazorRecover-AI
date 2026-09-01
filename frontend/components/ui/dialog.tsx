@@ -22,7 +22,7 @@ export function Dialog({ open, onOpenChange, children, title, description, class
       />
       <div
         className={cn(
-          "relative z-50 w-full max-w-lg rounded-xl border border-slate-200 bg-white p-6 shadow-xl transition-all duration-200",
+          "relative z-50 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-xl transition-all duration-200",
           className
         )}
       >

@@ -95,13 +95,13 @@ export default function DashboardPage() {
           transition={{ duration: 0.3 }}
           className="rounded-xl border border-amber-300 bg-amber-50/90 p-4 shadow-sm"
         >
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start gap-3">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-600 text-white shadow-xs">
                 <AlertTriangle className="h-4 w-4" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
                     Payment Failure Rate Anomaly Detected
                   </span>
@@ -114,8 +114,8 @@ export default function DashboardPage() {
                 </p>
               </div>
             </div>
-            <Link href="/agents">
-              <Button variant="outline" size="sm" className="shrink-0 bg-white border-amber-300 text-amber-900 hover:bg-amber-100/50 text-xs">
+            <Link href="/agents" className="self-end sm:self-auto shrink-0">
+              <Button variant="outline" size="sm" className="bg-white border-amber-300 text-amber-900 hover:bg-amber-100/50 text-xs">
                 View Root Cause
               </Button>
             </Link>
@@ -399,7 +399,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs min-w-[700px]">
                 <thead className="bg-slate-50/75 border-y border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
                   <tr>
                     <th className="px-4 py-3">Transaction</th>

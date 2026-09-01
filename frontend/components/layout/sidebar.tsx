@@ -10,7 +10,7 @@ import {
   Cpu,
   BarChart3,
   Zap,
-  Activity,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,22 +23,43 @@ const NAV_ITEMS = [
   { href: "/evaluation", label: "Evaluation & ROI", icon: BarChart3 },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-slate-200/90 bg-[#ffffff] text-slate-800 shadow-sm">
+    <aside
+      className={cn(
+        "fixed left-0 top-0 z-50 flex h-screen w-72 lg:w-64 flex-col border-r border-slate-200/90 bg-white text-slate-800 shadow-xl lg:shadow-sm transition-transform duration-300 ease-in-out",
+        isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      )}
+    >
       {/* Brand Header */}
-      <div className="flex h-16 items-center gap-3 border-b border-slate-100 px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-[#0052cc] to-[#1e40af] text-white shadow-md shadow-blue-500/20">
-          <Zap className="h-5 w-5" />
+      <div className="flex h-16 items-center justify-between border-b border-slate-100 px-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-[#0052cc] to-[#1e40af] text-white shadow-md shadow-blue-500/20">
+            <Zap className="h-5 w-5" />
+          </div>
+          <div className="flex flex-col">
+            <span className="font-bold text-[15px] tracking-tight text-slate-900 flex items-center gap-1.5">
+              RazorRecover <span className="rounded bg-blue-100 px-1 py-0.2 text-[10px] font-bold text-blue-700">AI</span>
+            </span>
+            <span className="text-[11px] text-slate-400 font-medium">Autonomous Revenue Recovery</span>
+          </div>
         </div>
-        <div className="flex flex-col">
-          <span className="font-bold text-[15px] tracking-tight text-slate-900 flex items-center gap-1.5">
-            RazorRecover <span className="rounded bg-blue-100 px-1 py-0.2 text-[10px] font-bold text-blue-700">AI</span>
-          </span>
-          <span className="text-[11px] text-slate-400 font-medium">Autonomous Revenue Recovery</span>
-        </div>
+
+        {/* Mobile Close Button */}
+        <button
+          onClick={onClose}
+          className="lg:hidden rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+          aria-label="Close sidebar"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
       {/* Navigation Links */}
@@ -47,12 +68,13 @@ export function Sidebar() {
           Platform
         </div>
         {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`)) || (item.href === "/dashboard" && pathname === "/");
           const Icon = item.icon;
           return (
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => onClose?.()}
               className={cn(
                 "group flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
                 isActive

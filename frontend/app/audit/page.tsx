@@ -93,14 +93,14 @@ export default function AuditPage() {
               <Card className="transition-all hover:border-slate-300 hover:shadow-xs">
                 <div
                   onClick={() => toggleExpand(log.id)}
-                  className="flex items-center justify-between p-4 cursor-pointer select-none"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-2.5 cursor-pointer select-none"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+                  <div className="flex items-start sm:items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 shrink-0 mt-0.5 sm:mt-0">
                       <FileCode className="h-4 w-4" />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                         <span className="font-mono text-xs font-bold text-slate-900">{log.action}</span>
                         <Badge variant="neutral" size="sm">
                           {log.agent_name}
@@ -111,11 +111,11 @@ export default function AuditPage() {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-600 mt-1">{log.reasoning_summary}</p>
+                      <p className="text-xs text-slate-600 mt-1 leading-snug">{log.reasoning_summary}</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
                     {log.policy_result && (
                       <Badge variant={isApproved ? "success" : isBlocked ? "danger" : "warning"} size="sm">
                         {log.policy_result}

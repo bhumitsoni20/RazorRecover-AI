@@ -358,8 +358,8 @@ export default function TransactionDetailPage() {
             </Button>
           </Link>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 font-mono break-all">
                 {transaction.id}
               </h1>
               <Badge
@@ -375,7 +375,7 @@ export default function TransactionDetailPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {!isRecovered && !isBlocked && hasExecutedRecovery && (
             <Button
               onClick={() => setShowWebhookModal(true)}
