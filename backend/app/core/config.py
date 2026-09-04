@@ -41,36 +41,44 @@ class Settings(BaseSettings):
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
     # Frontend URL
-    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://razorrecover.vercel.app")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://razor-recover-ai-mocha.vercel.app")
 
     # CORS
-    CORS_ORIGINS: list[str] = [
+    CORS_ORIGINS: list[str] | str = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:8000",
-        "https://razorrecover.vercel.app",
+        "https://razor-recover-ai-mocha.vercel.app",
     ]
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def validate_cors_origins(cls, v: Any) -> list[str]:
-        if isinstance(v, list):
-            return v
-        if isinstance(v, str):
-            v_str = v.strip()
-            if v_str.startswith("[") and v_str.endswith("]"):
-                import json
-                try:
-                    return json.loads(v_str)
-                except Exception:
-                    pass
-            return [origin.strip() for origin in v_str.split(",") if origin.strip()]
-        return [
+        default_origins = [
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://localhost:8000",
-            "https://razorrecover.vercel.app",
+            "https://razor-recover-ai-mocha.vercel.app",
         ]
+        if not v:
+            return default_origins
+        if isinstance(v, list):
+            return [str(origin).strip() for origin in v if str(origin).strip()]
+        if isinstance(v, str):
+            v_str = v.strip()
+            if not v_str:
+                return default_origins
+            if v_str.startswith("[") and v_str.endswith("]"):
+                import json
+                try:
+                    parsed = json.loads(v_str)
+                    if isinstance(parsed, list):
+                        return [str(origin).strip() for origin in parsed if str(origin).strip()]
+                except json.JSONDecodeError:
+                    pass
+            origins = [origin.strip() for origin in v_str.split(",") if origin.strip()]
+            return origins if origins else default_origins
+        return default_origins
 
     # Google Gemini & LLM Configuration
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "gemini")
