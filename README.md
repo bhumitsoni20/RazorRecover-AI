@@ -81,10 +81,12 @@ flowchart TD
         P --> Q[Recovered Revenue Ledger & Audit Hash Chain]
     end
 
-    style Ingestion fill:#f8fafc,stroke:#94a3b8,stroke-width:1px
-    style Intelligence fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
-    style Governance fill:#fef3c7,stroke:#f59e0b,stroke-width:2px
-    style Execution fill:#ecfdf5,stroke:#10b981,stroke-width:2px
+    style Ingestion fill:#f8fafc,stroke:#64748b,stroke-width:2px,color:#000000
+    style Intelligence fill:#eff6ff,stroke:#2563eb,stroke-width:2px,color:#000000
+    style Governance fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#000000
+    style Execution fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#000000
+
+    classDef default fill:#ffffff,stroke:#334155,stroke-width:1.5px,color:#000000;
 ```
 
 ---
