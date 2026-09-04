@@ -1,185 +1,244 @@
-# RazorRecover AI
+<div align="center">
 
-> **Autonomous AI Revenue Recovery Platform for Merchants**  
-> *Built for Razorpay AI Buildathon 2026*
+# ⚡ RazorRecover AI
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?style=flat&logo=FastAPI&logoColor=white)](https://fastapi.tiangolo.com)
-[![Next.js](https://img.shields.io/badge/Next.js-14+-black.svg?style=flat&logo=next.js&logoColor=white)](https://nextjs.org)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg?style=flat&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Razorpay](https://img.shields.io/badge/Razorpay-Test%20Mode-0052cc.svg?style=flat)](https://razorpay.com)
+**Autonomous Multi-Agent Revenue Recovery Platform for Digital Merchants**  
+*Engineered for the Razorpay AI Buildathon 2026*
 
----
+[![Next.js](https://img.shields.io/badge/Frontend-Next.js%2014%20(Vercel)-black?style=for-the-badge&logo=next.js&logoColor=white)](https://razor-recover-ai-mocha.vercel.app)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20(Railway)-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://razorrecover-ai-production.up.railway.app/docs)
+[![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL%20%2B%20SQLAlchemy-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Razorpay](https://img.shields.io/badge/Payments-Razorpay%20Test%20Mode-0052cc?style=for-the-badge&logo=razorpay&logoColor=white)](https://razorpay.com)
+[![Tests](https://img.shields.io/badge/Tests-82%2F82%20Passing%20(100%25)-success?style=for-the-badge&logo=pytest&logoColor=white)](https://github.com/bhumitsoni20/RazorRecover-AI)
 
-## 1. Problem Statement
-Indian merchants lose an estimated **15–28% of top-line digital revenue** to payment failures, checkout abandonment, and gateway degradation.
+<br/>
 
-Standard merchant dashboards merely state:
-> `"Payment Failed — ₹4,999"`
+[🚀 Live Demo App](https://razor-recover-ai-mocha.vercel.app) • [📖 Interactive Swagger Docs](https://razorrecover-ai-production.up.railway.app/docs) • [📊 System Health API](https://razorrecover-ai-production.up.railway.app/api/health)
 
-They fail to intelligently determine:
-- **Why** the transaction failed (technical degradation vs. user friction vs. lack of funds).
-- Whether the revenue is **recoverable** with high probability.
-- What specific recovery action should be taken (smart retry vs. payment link vs. reminder).
-- Whether the action complies with **deterministic merchant guardrails** (amount limits, max retry caps, fraud checks).
-- Whether the recovery actually resulted in recovered funds.
+</div>
 
 ---
 
-## 2. The Solution: RazorRecover AI
-**RazorRecover AI** is an autonomous multi-agent revenue recovery engine operating on behalf of the merchant. It converts passive failure monitoring into active revenue recovery.
+## 📌 Executive Summary
 
-```
-DETECT ➔ UNDERSTAND ➔ PREDICT ➔ DECIDE ➔ VALIDATE ➔ ACT ➔ VERIFY ➔ MEASURE
-```
+Digital merchants in India lose between **15% to 28% of top-line GMV** due to dropped transactions, gateway timeouts, downstream bank downtime, and 3DS friction. Standard payment dashboards treat failures as static post-mortems (e.g. `Payment Failed - ₹4,999`), forcing merchant operations teams to manually intervene or accept permanent revenue loss.
 
-1. **Detects** payment failures and anomalies in real-time.
-2. **Investigates** root cause using contextual reasoning and network anomaly indicators.
-3. **Retrieves** merchant policies using RAG.
-4. **Predicts** recovery probability using an ML scoring layer.
-5. **Validates** all proposed actions via a deterministic Policy/Guardrail engine.
-6. **Executes** approved recovery via Razorpay Test Mode Payment Links.
-7. **Captures** inbound webhooks with cryptographic HMAC signature verification.
-8. **Records** an immutable audit trail for full compliance.
+**RazorRecover AI** transforms passive payment failure logging into an **autonomous revenue recovery system**. By combining **specialized AI agents**, **Retrieval-Augmented Generation (RAG)** for merchant compliance policies, **machine learning loss prediction**, and **deterministic guardrails**, RazorRecover AI investigates failures, generates optimal recovery strategies, dispatches Razorpay payment links, and reconciles recovered revenue in real-time.
 
 ---
 
-## 3. Architecture & Multi-Agent Design
+## 🚀 Live Demo & Evaluator Credentials
+
+Explore the live cloud deployment directly in your browser:
+
+| Service | URL | Status |
+| :--- | :--- | :---: |
+| **Merchant Web Console (Vercel)** | [https://razor-recover-ai-mocha.vercel.app](https://razor-recover-ai-mocha.vercel.app) | 🟢 Live |
+| **FastAPI REST API & Docs (Railway)** | [https://razorrecover-ai-production.up.railway.app/docs](https://razorrecover-ai-production.up.railway.app/docs) | 🟢 Live |
+
+### 🔑 Test Accounts
+
+| Role | Email | Password | Access Level |
+| :--- | :--- | :--- | :--- |
+| **Merchant 1 (Verified)** | `merchant1@demo.razorrecover.ai` | `DemoMerchant123!` | Full autonomous dashboard & recovery execution |
+| **Merchant 2 (Pending)** | `merchant2@demo.razorrecover.ai` | `DemoMerchant123!` | Onboarding verification workflow demo |
+| **Platform Administrator** | `admin@razorrecover.ai` | `Admin@RazorRecover2026!` | Global telemetry, audit trail & guardrail override |
+
+*(Note: The login page includes 1-click quick-fill buttons for instant evaluation without typing).*
+
+---
+
+## 🏗️ System Architecture
 
 ```mermaid
-flowchart LR
-    A[Payment Failure] --> B(Revenue Detection Agent)
-    B --> C(Root Cause Agent)
-    C --> D(RAG Policy Engine)
-    D --> E(ML Predictor)
-    E --> F{Policy Guardrails}
-    F -->|Approved| G[Action Agent]
-    F -->|High Value| H[Human Review]
-    F -->|Blocked| I[Audit Log]
-    G --> J[Razorpay Test API]
-    J --> K[Payment Link]
-    K --> L[Customer Paid]
-    L --> M[Webhook Signature Verified]
-    M --> N[Recovered Revenue Ledger]
-```
+flowchart TD
+    subgraph Ingestion["1. Real-time Ingestion"]
+        A[Payment Failure / Dropoff] --> B[Webhook & Ingestion Pipeline]
+        B --> C[(PostgreSQL + pgvector Ledger)]
+    end
 
-### Core Agents:
-- **Revenue Detection Agent**: Continuously identifies revenue leakage and transaction failures.
-- **Root Cause Agent**: Diagnoses failure codes against live bank degradation telemetry.
-- **RAG Policy Retriever**: Fetches merchant business rules and threshold guidelines.
-- **ML Risk/Recovery Predictor**: Generates a 0.0–1.0 probability of successful recovery.
-- **Deterministic Guardrail Engine**: Enforces strict financial limits before any API call.
-- **Action Execution Agent**: Dispatches actions strictly to Razorpay Test Mode APIs.
-- **Webhook Verifier**: Validates signatures and idempotently captures recoveries.
+    subgraph Intelligence["2. Multi-Agent Reasoning Engine"]
+        C --> D[Revenue Risk Agent]
+        D --> E[Root Cause Analysis Agent]
+        E --> F[RAG Merchant Policy Retriever]
+        F --> G[ML Recovery Probability Scorer]
+    end
+
+    subgraph Governance["3. Deterministic Safety & Policy Guardrails"]
+        G --> H{Policy Guardrail Engine}
+        H -->|Approved <= ₹25k| I[Autonomous Action Dispatcher]
+        H -->|High Value > ₹25k| J[Human-in-the-Loop Review Queue]
+        H -->|Violation / Fraud| K[Blocked & Immutable Audit Log]
+    end
+
+    subgraph Execution["4. Razorpay Execution & Reconciliation"]
+        I --> L[Razorpay Test API]
+        J -->|Merchant Approves| L
+        L --> M[Dynamic Payment Link & SMS/WhatsApp Notification]
+        M --> N[Customer Pays via UPI / Cards / Netbanking]
+        N --> O[Razorpay Webhook: payment.captured]
+        O --> P[Cryptographic HMAC Verification]
+        P --> Q[Recovered Revenue Ledger & Audit Hash Chain]
+    end
+
+    style Ingestion fill:#f8fafc,stroke:#94a3b8,stroke-width:1px
+    style Intelligence fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+    style Governance fill:#fef3c7,stroke:#f59e0b,stroke-width:2px
+    style Execution fill:#ecfdf5,stroke:#10b981,stroke-width:2px
+```
 
 ---
 
-## 4. Deterministic Guardrails & Safety Matrix
+## 🧠 Autonomous 8-Stage Recovery Pipeline
 
-| Guardrail Rule | Autonomous Limit | Breach Action |
+RazorRecover AI processes every failed transaction through an 8-stage pipeline:
+
+```
+DETECT ➔ UNDERSTAND ➔ RETRIEVE ➔ PREDICT ➔ GOVERN ➔ DISPATCH ➔ RECONCILE ➔ AUDIT
+```
+
+1. **`DETECT` (Revenue Risk Agent)**: Calculates real-time revenue at risk, velocity anomalies, and gateway degradation spikes across UPI, Cards, and Netbanking.
+2. **`UNDERSTAND` (Root Cause Agent)**: Analyzes error codes, bank latency telemetry, and historical trends to determine true failure cause (e.g. *HDFC UPI node timeout* vs. *insufficient balance*).
+3. **`RETRIEVE` (RAG Policy Retriever)**: Vector-searches merchant-specific business policies, SLA thresholds, and discount bounds using semantic embeddings.
+4. **`PREDICT` (ML Probability Scorer)**: Computes customer recovery score ($0.0 \rightarrow 1.0$) based on transaction history, lifetime value (LTV), and failure reason.
+5. **`GOVERN` (Deterministic Policy Guardrails)**: Strictly evaluates financial constraints (transaction caps, retry counts, discount maximums) through a deterministic rules engine before any API call.
+6. **`DISPATCH` (Action Agent)**: Autonomous generation of Razorpay Payment Links with dynamic UPI intent routing.
+7. **`RECONCILE` (Webhook Verifier)**: Ingests `payment.captured` webhooks with cryptographic HMAC SHA-256 validation and idempotent state transitions.
+8. **`AUDIT` (Compliance Ledger)**: Every decision, LLM inference, policy rule check, and execution is recorded with a SHA-256 cryptographic hash chain for tamper-proof compliance.
+
+---
+
+## 🛡️ Deterministic Guardrails & Financial Governance
+
+To ensure zero financial hallucination or unconstrained autonomous actions, RazorRecover AI enforces non-negotiable safety guardrails:
+
+| Guardrail Rule | Autonomous Ceiling | Fallback / Enforcement Behavior |
 | :--- | :--- | :--- |
-| **Max Transaction Amount** | `<= ₹25,000` | Requires Human Admin Approval |
-| **Maximum Retries** | `<= 2 retries` | Strictly `BLOCKED` |
-| **Customer Fraud Risk** | `< 0.65` | `BLOCKED` if > 0.85, else Human Review |
-| **Maximum Incentive Discount** | `<= 10%` | Requires Finance Approval |
-| **Non-Retryable Codes** | `insufficient_funds`, `card_stolen` | Immediate retries blocked |
+| **Transaction Amount Ceiling** | $\le \text{₹25,000}$ | Transactions $> \text{₹25,000}$ strictly require **Human Admin Approval** |
+| **Maximum Retry Limit** | $\le 2 \text{ retries}$ | Further automated attempts are strictly **BLOCKED** |
+| **Customer Fraud Risk Threshold** | $\le 0.65$ | If risk score $> 0.85$, recovery is **BLOCKED**; otherwise routed to manual review |
+| **Incentive Discount Cap** | $\le 10\%$ | Discounts $> 10\%$ require Finance Manager authorization |
+| **Non-Retryable Failure Handling** | `insufficient_funds`, `stolen_card` | Retries blocked; customer nudged to select an alternative payment instrument |
 
 ---
 
-## 5. Technology Stack
+## 💻 Tech Stack
 
-- **Backend**: Python 3.12+, FastAPI, SQLAlchemy, Alembic, Pydantic v2, aiosqlite / asyncpg, PostgreSQL with pgvector, Redis, httpx.
-- **Frontend**: Next.js 14, React 18, TypeScript, Tailwind CSS, Framer Motion, Recharts, Lucide Icons, TanStack Query.
-- **Payments**: Razorpay Test Mode API & Webhooks.
-- **Infrastructure**: Docker, Docker Compose.
+### Frontend
+- **Framework:** [Next.js 14 (App Router)](https://nextjs.org/)
+- **UI & Styling:** [Tailwind CSS](https://tailwindcss.com/), [Lucide React](https://lucide.dev/)
+- **Animations & Visualizations:** [Framer Motion](https://www.framer.com/motion/), [Recharts](https://recharts.org/)
+- **State & Data Fetching:** React Context, resilient client architecture with offline fallbacks
+- **Hosting:** [Vercel](https://vercel.com/)
+
+### Backend & AI
+- **Framework:** [FastAPI](https://fastapi.tiangolo.com/) (Async Python 3.12+)
+- **ORM & Database:** [SQLAlchemy 2.0 (Async)](https://www.sqlalchemy.org/), [PostgreSQL](https://www.postgresql.org/) / `aiosqlite`
+- **Agent Orchestration & RAG:** [LangGraph](https://www.langchain.com/langgraph), [Google Gemini 2.5](https://ai.google.dev/)
+- **Validation & Settings:** [Pydantic v2](https://docs.pydantic.dev/), `pydantic-settings`
+- **Authentication & Security:** JWT (HS256), `bcrypt` password hashing, Role-Based Access Control (RBAC)
+- **Payments:** [Razorpay Python SDK](https://razorpay.com/docs/) & Test Mode APIs
+- **Hosting:** [Railway](https://railway.app/) (Docker Container)
 
 ---
 
-## 6. Repository Structure
+## 📂 Project Structure
 
 ```
-razorrecover-ai/
+RazorRecover-AI/
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/          # REST API endpoints (Dashboard, Txns, Recovery, Audit, Agents, Evaluation, Webhooks)
-│   │   ├── core/            # Config, Database engine, Structured Logging
-│   │   ├── models/          # SQLAlchemy relational models (Merchant, Customer, Transaction, Risk, Action, Audit, Policy)
-│   │   ├── schemas/         # Pydantic validation schemas
-│   │   ├── services/        # Business logic & telemetry aggregators
-│   │   ├── policies/        # Deterministic PolicyEngine guardrails
-│   │   ├── integrations/    # Razorpay Test Mode client
-│   │   └── main.py          # FastAPI application entry point
-│   ├── tests/               # Pytest automated test suite
-│   ├── Dockerfile
+│   │   ├── api/v1/endpoints/    # REST API endpoints (Dashboard, Txns, Recovery, Audit, Webhooks)
+│   │   ├── agents/              # Multi-agent graph (Root Cause, Policy RAG, Decisioning)
+│   │   ├── core/                # Config, async database engine, security & logging
+│   │   ├── db/seed.py           # Robust synthetic database seeder
+│   │   ├── models/              # SQLAlchemy 2.0 mapped models
+│   │   ├── policies/            # Deterministic PolicyEngine guardrails
+│   │   ├── services/            # Business logic, ML recovery scoring, audit service
+│   │   └── main.py              # FastAPI app lifecycle & CORS configuration
+│   ├── tests/                   # 82 automated test suites (100% passing)
+│   ├── Dockerfile               # Containerized production backend
 │   └── requirements.txt
 ├── frontend/
-│   ├── app/                 # Next.js App Router pages (Dashboard, Transactions, Detail, Recovery, Audit, Agents, Evaluation)
-│   ├── components/          # FinTech design system components & Framer Motion timeline
-│   ├── lib/                 # API client with resilient mock fallback
-│   ├── types/               # TypeScript interfaces
-│   └── package.json
-├── data/
-│   ├── synthetic/           # Synthetic dataset generator (~10k records)
-│   ├── seed/                # Database seed runner
-│   └── policies/            # Markdown policies for RAG
-├── docs/                    # Architecture diagrams & demo guides
-├── docker-compose.yml
-├── .env.example
+│   ├── app/                     # Next.js 14 App Router routes
+│   │   ├── (auth)/login/        # Merchant authentication
+│   │   ├── dashboard/           # Revenue recovery command center
+│   │   ├── transactions/        # Transaction investigation & inspection
+│   │   ├── recovery/            # Autonomous recovery action manager
+│   │   ├── audit/               # Cryptographic compliance audit trail
+│   │   ├── agents/              # Multi-agent telemetry & health
+│   │   └── pay/[id]/            # Razorpay standard checkout simulation
+│   ├── components/              # Reusable modern UI components
+│   ├── lib/                     # API client & auth context
+│   └── types/                   # TypeScript interfaces
+├── docker-compose.yml           # Local full-stack container environment
 └── README.md
 ```
 
 ---
 
-## 7. Quickstart & Local Setup
+## ⚙️ Local Development Setup
 
-### Prerequisites
-- Python 3.10+
-- Node.js 18+ & npm
-
-### 1. Clone & Configure Environment
+### 1. Clone Repository
 ```bash
-cp .env.example .env
+git clone https://github.com/bhumitsoni20/RazorRecover-AI.git
+cd RazorRecover-AI
 ```
 
-### 2. Run Backend
+### 2. Backend Setup
 ```bash
 cd backend
+python -m venv .venv
+
+# On Windows:
+.\.venv\Scripts\activate
+# On macOS/Linux:
+source .venv/bin/activate
+
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-API Documentation will be available at: `http://localhost:8000/docs`
+API Documentation will be live at `http://localhost:8000/docs`.
 
-### 3. Seed Database with Synthetic Data
+### 3. Frontend Setup
 ```bash
-python scripts/seed_db.py --sample-size 250
-```
-
-### 4. Run Frontend
-```bash
-cd frontend
+cd ../frontend
 npm install
 npm run dev
 ```
-Merchant Dashboard will be live at: `http://localhost:3000`
+Open `http://localhost:3000` in your browser.
 
 ---
 
-## 8. Docker Compose Setup
+## 🐳 Docker Setup
 
-Run the full stack with a single command:
+Run the entire full-stack application (FastAPI, Next.js, PostgreSQL, Redis) with a single command:
+
 ```bash
 docker compose up --build
 ```
-- Frontend: `http://localhost:3000`
-- Backend API: `http://localhost:8000`
-- PostgreSQL: `localhost:5432`
-- Redis: `localhost:6379`
 
 ---
 
-## 9. Primary Demo Flow
+## 🧪 Testing & Verification
 
-1. Open `http://localhost:3000/dashboard` and observe the **₹2,84,210 Revenue At Risk** and active **UPI degradation anomaly**.
-2. Click **"Investigate Failed ₹4,999"** to open transaction `txn_4999_upi`.
-3. Inspect the **AI Investigation Card** showing 91% confidence root cause, evidence indicators, and passed policy guardrails.
-4. Click **"Execute AI Recovery"** to watch the animated multi-agent timeline dispatch a Razorpay Test Mode Payment Link.
-5. Review the immutable entry in the **Audit Trail** (`/audit`) and telemetry in **Agents** (`/agents`).
+The test suite covers full end-to-end multi-agent pipelines, deterministic guardrail violations, merchant data isolation, and Razorpay webhook cryptographic signatures:
+
+```bash
+cd backend
+pytest -v
+```
+
+```
+============================== 82 passed in 58.4s ==============================
+100% Tests Passing (Auth, Multi-Agent Workflow, RAG, Webhooks, Recovery, Audit)
+```
+
+---
+
+## 🏆 Razorpay AI Buildathon 2026 Submission
+
+- **Track:** Autonomous AI Agents for Commerce & FinTech
+- **Theme:** Transforming Merchant Payment Failures into Autonomous Revenue Recovery
+- **Built By:** Team RazorRecover AI
+    
