@@ -1,5 +1,4 @@
-from typing import List, Optional
-from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -23,13 +22,13 @@ class PolicyCheckItem(BaseModel):
 class AIInvestigation(BaseModel):
     root_cause: str
     confidence: float
-    evidence: List[str]
+    evidence: list[str]
     recovery_probability: float
     recommended_action: str
     expected_recovery: float
     policy_decision: str
-    policy_checks: List[PolicyCheckItem]
-    rag_policy_reference: Optional[str] = None
+    policy_checks: list[PolicyCheckItem]
+    rag_policy_reference: str | None = None
 
 
 class RecoveryActionBrief(BaseModel):
@@ -40,9 +39,9 @@ class RecoveryActionBrief(BaseModel):
     policy_decision: str
     status: str
     amount_recovered: float
-    external_reference: Optional[str] = None
+    external_reference: str | None = None
     created_at: str
-    completed_at: Optional[str] = None
+    completed_at: str | None = None
 
 
 class TransactionListItem(BaseModel):
@@ -53,18 +52,18 @@ class TransactionListItem(BaseModel):
     amount: float
     currency: str
     payment_method: str
-    bank: Optional[str] = None
+    bank: str | None = None
     status: str
-    failure_reason: Optional[str] = None
+    failure_reason: str | None = None
     attempt_number: int
-    risk_score: Optional[float] = None
-    recovery_probability: Optional[float] = None
-    loss_probability: Optional[float] = None
-    revenue_at_risk: Optional[float] = None
-    risk_level: Optional[str] = None  # LOW, MEDIUM, HIGH, CRITICAL
-    explanation: Optional[str] = None
-    ai_recommendation: Optional[str] = None
-    policy_decision: Optional[str] = None
+    risk_score: float | None = None
+    recovery_probability: float | None = None
+    loss_probability: float | None = None
+    revenue_at_risk: float | None = None
+    risk_level: str | None = None  # LOW, MEDIUM, HIGH, CRITICAL
+    explanation: str | None = None
+    ai_recommendation: str | None = None
+    policy_decision: str | None = None
     created_at: str
 
 
@@ -75,17 +74,17 @@ class TransactionDetailResponse(BaseModel):
     currency: str
     payment_method: str
     payment_gateway: str
-    bank: Optional[str] = None
+    bank: str | None = None
     status: str
-    failure_reason: Optional[str] = None
+    failure_reason: str | None = None
     attempt_number: int
-    razorpay_payment_id: Optional[str] = None
-    razorpay_order_id: Optional[str] = None
-    loss_probability: Optional[float] = None
-    revenue_at_risk: Optional[float] = None
-    risk_level: Optional[str] = None
+    razorpay_payment_id: str | None = None
+    razorpay_order_id: str | None = None
+    loss_probability: float | None = None
+    revenue_at_risk: float | None = None
+    risk_level: str | None = None
     created_at: str
     updated_at: str
     customer: CustomerBrief
-    investigation: Optional[AIInvestigation] = None
-    recovery_actions: List[RecoveryActionBrief] = []
+    investigation: AIInvestigation | None = None
+    recovery_actions: list[RecoveryActionBrief] = []

@@ -1,8 +1,10 @@
 import json
 import re
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 import httpx
+
 from app.core.config import settings
 from app.core.logging import logger
 from app.schemas.root_cause import RootCauseAnalysis, RootCauseCategory
@@ -26,20 +28,20 @@ class RootCauseAgent:
         amount: float,
         currency: str = "INR",
         payment_method: str = "upi",
-        failure_reason: Optional[str] = None,
-        failure_code: Optional[str] = None,
+        failure_reason: str | None = None,
+        failure_code: str | None = None,
         attempt_count: int = 1,
-        bank: Optional[str] = None,
-        customer_name: Optional[str] = None,
-        customer_success_rate: Optional[float] = None,
-        lifetime_transactions: Optional[int] = None,
-        anomaly_info: Optional[Dict[str, Any]] = None,
+        bank: str | None = None,
+        customer_name: str | None = None,
+        customer_success_rate: float | None = None,
+        lifetime_transactions: int | None = None,
+        anomaly_info: dict[str, Any] | None = None,
     ) -> RootCauseAnalysis:
         """
         Executes root cause reasoning on real transaction signals using Gemini LLM.
         """
         # Prepare explicit signals dictionary (no invented missing values)
-        signals: Dict[str, Any] = {
+        signals: dict[str, Any] = {
             "transaction_id": transaction_id,
             "amount": amount,
             "currency": currency,
@@ -63,7 +65,7 @@ class RootCauseAgent:
         # Deterministic evidence-first fallback (if Gemini API key is missing, rate-limited, or offline)
         return self._deterministic_fallback(signals)
 
-    async def _call_gemini(self, signals: Dict[str, Any]) -> Optional[RootCauseAnalysis]:
+    async def _call_gemini(self, signals: dict[str, Any]) -> RootCauseAnalysis | None:
         api_key = settings.GEMINI_API_KEY or getattr(settings, "LLM_API_KEY", "")
         if not api_key or api_key.startswith("your-") or "gemini-api-key" in api_key:
             logger.info("[RootCauseAgent] No Gemini API key provided. Using deterministic evidence reasoning.")
@@ -181,7 +183,7 @@ Output strictly valid JSON matching this exact structure:
             return RootCauseCategory.REPEATED_PAYMENT_FAILURE.value
         return RootCauseCategory.UNKNOWN.value
 
-    def _deterministic_fallback(self, signals: Dict[str, Any]) -> RootCauseAnalysis:
+    def _deterministic_fallback(self, signals: dict[str, Any]) -> RootCauseAnalysis:
         """
         Deterministic evidence-first diagnosis based strictly on verified transaction signals.
         """
@@ -191,7 +193,7 @@ Output strictly valid JSON matching this exact structure:
         anomaly_active = signals.get("phase4_anomaly_active", False)
         bank = signals.get("bank_network", "Bank")
 
-        evidence: List[str] = []
+        evidence: list[str] = []
 
         if anomaly_active or ("upi" in payment_method and "timeout" in failure_reason):
             category = RootCauseCategory.PAYMENT_METHOD_DEGRADATION.value

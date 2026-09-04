@@ -1,15 +1,16 @@
 from fastapi import APIRouter
+
 from app.api.v1.endpoints import (
-    auth,
-    onboarding,
-    dev,
-    dashboard,
-    transactions,
-    revenue_risk,
-    recovery,
-    audit,
     agents,
+    audit,
+    auth,
+    dashboard,
+    dev,
     evaluation,
+    onboarding,
+    recovery,
+    revenue_risk,
+    transactions,
     webhooks,
 )
 

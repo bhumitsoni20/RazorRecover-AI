@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -14,16 +15,16 @@ class AgentStatusCard(BaseModel):
 
 class AgentRunItem(BaseModel):
     id: str
-    transaction_id: Optional[str] = None
+    transaction_id: str | None = None
     agent_name: str
     status: str
     started_at: str
-    completed_at: Optional[str] = None
+    completed_at: str | None = None
     latency_ms: int
-    input_data: Optional[Dict[str, Any]] = None
-    output_data: Optional[Dict[str, Any]] = None
+    input_data: dict[str, Any] | None = None
+    output_data: dict[str, Any] | None = None
 
 
 class AgentsOverviewResponse(BaseModel):
-    agents: List[AgentStatusCard]
-    recent_runs: List[AgentRunItem]
+    agents: list[AgentStatusCard]
+    recent_runs: list[AgentRunItem]

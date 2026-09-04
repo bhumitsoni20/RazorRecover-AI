@@ -1,24 +1,25 @@
 from datetime import datetime, timedelta
-from typing import List, Optional
+
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, and_
-from app.models.transaction import Transaction
+
 from app.models.customer import Customer
-from app.models.revenue_risk import RevenueRisk
 from app.models.recovery_action import RecoveryAction
-from app.services.revenue_risk import RevenueRiskService
+from app.models.revenue_risk import RevenueRisk
+from app.models.transaction import Transaction
 from app.schemas.dashboard import (
+    AIQueueItem,
     DashboardSummaryResponse,
     MetricSummary,
-    RevenueLeakageItem,
     RecoveryTrendPoint,
-    AIQueueItem,
+    RevenueLeakageItem,
 )
+from app.services.revenue_risk import RevenueRiskService
 
 
 class DashboardService:
     @classmethod
-    async def get_summary(cls, db: AsyncSession, merchant_id: Optional[str] = None) -> DashboardSummaryResponse:
+    async def get_summary(cls, db: AsyncSession, merchant_id: str | None = None) -> DashboardSummaryResponse:
         # 1. Real Deterministic Revenue at Risk & Anomaly Summary for Merchant
         risk_summary = await RevenueRiskService.get_revenue_risk_summary(db, merchant_id=merchant_id)
         revenue_at_risk = risk_summary["total_revenue_at_risk"]
@@ -83,7 +84,7 @@ class DashboardService:
         )
 
         # 7. Dynamic Revenue Leakage Breakdown from database
-        leakage_breakdown: List[RevenueLeakageItem] = []
+        leakage_breakdown: list[RevenueLeakageItem] = []
         for src in risk_summary["top_risk_sources"]:
             leakage_breakdown.append(
                 RevenueLeakageItem(
@@ -109,7 +110,7 @@ class DashboardService:
         max_time_query = await db.execute(max_time_stmt)
         anchor_time = max_time_query.scalar() or datetime.utcnow()
 
-        trend: List[RecoveryTrendPoint] = []
+        trend: list[RecoveryTrendPoint] = []
         # Calculate daily aggregates for the past 7 days up to anchor_time
         for day_offset in range(6, -1, -1):
             day_start = (anchor_time - timedelta(days=day_offset)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -182,7 +183,7 @@ class DashboardService:
         recent_queue_query = await db.execute(recent_queue_stmt)
         rows = recent_queue_query.all()
 
-        queue_items: List[AIQueueItem] = []
+        queue_items: list[AIQueueItem] = []
         for txn, cust, risk, action in rows:
             loss_prob, recov_prob, risk_level, expl = RevenueRiskService.compute_loss_probability(
                 amount=txn.amount,

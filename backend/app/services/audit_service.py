@@ -1,7 +1,9 @@
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from typing import Any
+
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+
 from app.models.audit_log import AuditLog
 from app.schemas.audit import AuditLogItem
 
@@ -15,19 +17,25 @@ class AuditService:
         action: str,
         reasoning_summary: str,
         actor: str = "system",
-        transaction_id: Optional[str] = None,
-        input_data: Optional[Dict[str, Any]] = None,
-        output_data: Optional[Dict[str, Any]] = None,
-        policy_result: Optional[str] = None,
-        merchant_id: Optional[str] = None,
+        transaction_id: str | None = None,
+        input_data: dict[str, Any] | None = None,
+        output_data: dict[str, Any] | None = None,
+        policy_result: str | None = None,
+        merchant_id: str | None = None,
     ) -> AuditLog:
         """
         Appends an immutable audit log entry into the cryptographic hash chain.
         """
-        # Fetch the most recent audit entry to get previous_hash
-        query = select(AuditLog).order_by(desc(AuditLog.created_at)).limit(1)
+        if not merchant_id and transaction_id:
+            from app.models.transaction import Transaction
+            txn_res = await db.execute(select(Transaction.merchant_id).where(Transaction.id == transaction_id))
+            merchant_id = txn_res.scalar_one_or_none()
+
+        # Fetch the most recent audit entry to get previous_hash for this merchant
+        query = select(AuditLog)
         if merchant_id:
-            query = select(AuditLog).where(AuditLog.merchant_id == merchant_id).order_by(desc(AuditLog.created_at)).limit(1)
+            query = query.where(AuditLog.merchant_id == merchant_id)
+        query = query.order_by(desc(AuditLog.created_at)).limit(1)
 
         latest_entry_res = await db.execute(query)
         latest_entry = latest_entry_res.scalar_one_or_none()
@@ -75,11 +83,11 @@ class AuditService:
     async def list_audit_logs(
         cls,
         db: AsyncSession,
-        merchant_id: Optional[str] = None,
-        agent_name: Optional[str] = None,
-        transaction_id: Optional[str] = None,
+        merchant_id: str | None = None,
+        agent_name: str | None = None,
+        transaction_id: str | None = None,
         limit: int = 50,
-    ) -> List[AuditLogItem]:
+    ) -> list[AuditLogItem]:
         query = select(AuditLog)
         if merchant_id:
             query = query.where(AuditLog.merchant_id == merchant_id)
@@ -109,7 +117,7 @@ class AuditService:
         return items
 
     @classmethod
-    async def verify_audit_chain(cls, db: AsyncSession, merchant_id: Optional[str] = None) -> Dict[str, Any]:
+    async def verify_audit_chain(cls, db: AsyncSession, merchant_id: str | None = None) -> dict[str, Any]:
         """
         Cryptographically verifies the continuity and immutability of the audit log hash chain.
         """

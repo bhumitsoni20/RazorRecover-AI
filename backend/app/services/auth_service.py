@@ -1,13 +1,14 @@
 from datetime import datetime
-from typing import Tuple, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+
 from fastapi import HTTPException, status
-from app.models.merchant import Merchant
-from app.schemas.auth import SignupRequest, LoginRequest
-from app.core.security import hash_password, verify_password, create_access_token
-from app.services.audit_service import AuditService
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.logging import logger
+from app.core.security import create_access_token, hash_password, verify_password
+from app.models.merchant import Merchant
+from app.schemas.auth import LoginRequest, SignupRequest
+from app.services.audit_service import AuditService
 
 
 class AuthService:
@@ -16,7 +17,7 @@ class AuthService:
     """
 
     @classmethod
-    async def signup(cls, db: AsyncSession, data: SignupRequest) -> Tuple[Merchant, str, str]:
+    async def signup(cls, db: AsyncSession, data: SignupRequest) -> tuple[Merchant, str, str]:
         """
         Register a new merchant account.
         Initial status: verification_status = PENDING, razorpay_connection_status = NOT_CONNECTED.
@@ -72,7 +73,7 @@ class AuthService:
         return merchant, token, redirect_url
 
     @classmethod
-    async def login(cls, db: AsyncSession, data: LoginRequest) -> Tuple[Merchant, str, str]:
+    async def login(cls, db: AsyncSession, data: LoginRequest) -> tuple[Merchant, str, str]:
         """
         Authenticate merchant credentials and issue session token.
         Always returns generic error on failure to prevent user enumeration.

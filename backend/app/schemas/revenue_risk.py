@@ -1,4 +1,3 @@
-from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
 
@@ -8,8 +7,8 @@ class AnomalyItem(BaseModel):
     baseline_rate: float
     current_rate: float
     spike_multiplier: float
-    recent_failed_count: Optional[int] = None
-    recent_total_count: Optional[int] = None
+    recent_failed_count: int | None = None
+    recent_total_count: int | None = None
     severity: str  # LOW, MEDIUM, HIGH, CRITICAL
     message: str
 
@@ -28,11 +27,11 @@ class RevenueRiskSummaryResponse(BaseModel):
     currency: str
     transaction_count: int
     average_loss_probability: float
-    risk_distribution: Dict[str, int]
-    top_risk_sources: List[RiskSourceBreakdown]
+    risk_distribution: dict[str, int]
+    top_risk_sources: list[RiskSourceBreakdown]
     anomaly_detected: bool
-    anomaly_message: Optional[str] = None
-    anomalies: List[AnomalyItem] = []
+    anomaly_message: str | None = None
+    anomalies: list[AnomalyItem] = []
     calculated_at: str
 
 
@@ -42,10 +41,10 @@ class TransactionRiskItem(BaseModel):
     currency: str
     status: str
     payment_method: str
-    bank: Optional[str] = None
+    bank: str | None = None
     customer_name: str
     customer_email: str
-    failure_reason: Optional[str] = None
+    failure_reason: str | None = None
     attempt_number: int
     loss_probability: float
     successful_recovery_probability: float
@@ -56,7 +55,7 @@ class TransactionRiskItem(BaseModel):
 
 
 class PaginatedTransactionRiskResponse(BaseModel):
-    items: List[TransactionRiskItem]
+    items: list[TransactionRiskItem]
     total: int
     page: int
     limit: int

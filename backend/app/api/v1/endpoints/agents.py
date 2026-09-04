@@ -1,11 +1,10 @@
-from typing import List
-from datetime import datetime
 from fastapi import APIRouter, Depends
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+
 from app.core.database import get_db
 from app.models.agent_run import AgentRun
-from app.schemas.agent import AgentsOverviewResponse, AgentStatusCard, AgentRunItem
+from app.schemas.agent import AgentRunItem, AgentsOverviewResponse, AgentStatusCard
 from app.schemas.common import APIResponse
 
 router = APIRouter()

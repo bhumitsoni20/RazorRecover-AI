@@ -1,8 +1,10 @@
-import hmac
 import hashlib
+import hmac
 import uuid
+from typing import Any
+
 import httpx
-from typing import Dict, Any, Optional
+
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -25,9 +27,9 @@ class RazorpayService:
         self,
         amount: float,
         currency: str = "INR",
-        receipt: Optional[str] = None,
-        notes: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        receipt: str | None = None,
+        notes: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Creates an official Razorpay Order via POST /v1/orders.
         """
@@ -76,7 +78,7 @@ class RazorpayService:
         customer_phone: str,
         description: str,
         reference_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Creates a payment link via Razorpay Test Mode API.
         Falls back to active live test account links if test account limit is reached.
@@ -100,7 +102,7 @@ class RazorpayService:
         # If dummy keys or offline, return fallback
         if "sample" in self.key_id or "demo" in self.key_id or not self.key_secret:
             link_id = f"plink_test_{uuid.uuid4().hex[:14]}"
-            mock_url = f"https://rzp.io/rzp/B14ZJqn"
+            mock_url = "https://rzp.io/rzp/B14ZJqn"
             logger.info(f"[Razorpay Test Sandbox] Payment link created: {link_id} -> {mock_url}")
             return {
                 "id": link_id,
@@ -168,7 +170,7 @@ class RazorpayService:
                 "reference_id": reference_id,
             }
 
-    async def fetch_payment_link(self, payment_link_id: str) -> Dict[str, Any]:
+    async def fetch_payment_link(self, payment_link_id: str) -> dict[str, Any]:
         """
         Fetches payment link details from Razorpay Test Mode API.
         """
@@ -176,7 +178,7 @@ class RazorpayService:
             return {
                 "id": payment_link_id,
                 "status": "created",
-                "short_url": f"https://rzp.io/rzp/dIR5T0t3",
+                "short_url": "https://rzp.io/rzp/dIR5T0t3",
                 "amount": 499900,
                 "currency": "INR",
             }
@@ -193,7 +195,7 @@ class RazorpayService:
             logger.warning(f"[Razorpay API] Fetch payment link failed: {e}")
             return {"id": payment_link_id, "status": "created"}
 
-    async def fetch_payment(self, payment_id: str) -> Dict[str, Any]:
+    async def fetch_payment(self, payment_id: str) -> dict[str, Any]:
         """
         Fetches payment details from Razorpay Test Mode API.
         """

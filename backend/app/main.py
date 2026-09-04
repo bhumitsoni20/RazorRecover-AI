@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.database import init_db
-from app.core.logging import setup_logging, logger
-from app.api.v1.api import api_router
+from app.core.logging import logger, setup_logging
 
 setup_logging()
 
@@ -34,7 +35,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$|^https://.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,7 +51,7 @@ async def root():
         "status": "online",
         "docs_url": "/docs",
         "health_url": "/api/health",
-        "dashboard_ui": "http://localhost:3000/dashboard",
+        "dashboard_ui": f"{settings.FRONTEND_URL}/dashboard",
     }
 
 
@@ -68,8 +69,13 @@ async def health_check():
 
 # Include API v1 routes
 app.include_router(api_router, prefix="/api")
+app.include_router(api_router, prefix="/api/v1")
+
 
 
 if __name__ == "__main__":
+    import os
+
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=settings.ENVIRONMENT == "development")

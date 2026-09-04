@@ -1,6 +1,6 @@
 import os
 import re
-from typing import List, Dict, Any, Tuple
+from typing import Any
 
 
 class PolicyRAG:
@@ -11,7 +11,7 @@ class PolicyRAG:
 
     def __init__(self, policy_file_path: str = "data/policies/payment_recovery_policy.md"):
         self.policy_file_path = policy_file_path
-        self.chunks: List[Dict[str, Any]] = []
+        self.chunks: list[dict[str, Any]] = []
         self._load_and_chunk_policy()
 
     def _load_and_chunk_policy(self):
@@ -57,7 +57,7 @@ Once webhook signals payment.captured or payment_link.paid, immediately halt ret
                 "keywords": set(re.findall(r"\w+", text.lower())),
             })
 
-    def retrieve(self, query: str, top_k: int = 2) -> List[Dict[str, Any]]:
+    def retrieve(self, query: str, top_k: int = 2) -> list[dict[str, Any]]:
         """
         Retrieves top-k relevant policy chunks with section citations.
         """

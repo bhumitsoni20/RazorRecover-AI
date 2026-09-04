@@ -1,12 +1,12 @@
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
-from app.models.transaction import Transaction
+
 from app.models.customer import Customer
-from app.models.revenue_risk import RevenueRisk
+from app.models.transaction import Transaction
 from app.services.anomaly_detector import AnomalyDetectorService
-from app.core.logging import logger
 
 
 class RevenueRiskService:
@@ -41,11 +41,11 @@ class RevenueRiskService:
         cls,
         amount: float,
         payment_method: str,
-        failure_reason: Optional[str],
+        failure_reason: str | None,
         attempt_number: int = 1,
         customer_success_rate: float = 0.85,
         is_anomaly_active: bool = False,
-    ) -> Tuple[float, float, str, str]:
+    ) -> tuple[float, float, str, str]:
         """
         Transparent baseline probability scoring model.
         Returns:
@@ -104,7 +104,7 @@ class RevenueRiskService:
         return loss_prob, recov_prob, risk_level, explanation
 
     @classmethod
-    async def get_revenue_risk_summary(cls, db: AsyncSession, merchant_id: Optional[str] = None) -> Dict[str, Any]:
+    async def get_revenue_risk_summary(cls, db: AsyncSession, merchant_id: str | None = None) -> dict[str, Any]:
         """
         Aggregates real database transactions to compute total revenue at risk,
         breakdowns, and anomaly alerts for a given merchant.
@@ -129,7 +129,7 @@ class RevenueRiskService:
         weighted_loss_prob_sum = 0.0
         count = len(result)
 
-        category_buckets: Dict[str, Dict[str, Any]] = {
+        category_buckets: dict[str, dict[str, Any]] = {
             "Payment Failures": {"amount": 0.0, "count": 0, "color": "#ef4444"},
             "Checkout Abandonment": {"amount": 0.0, "count": 0, "color": "#f59e0b"},
             "Bank Degradation": {"amount": 0.0, "count": 0, "color": "#8b5cf6"},
@@ -207,11 +207,11 @@ class RevenueRiskService:
     async def get_transaction_risks(
         cls,
         db: AsyncSession,
-        merchant_id: Optional[str] = None,
+        merchant_id: str | None = None,
         page: int = 1,
         limit: int = 20,
-        risk_level_filter: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        risk_level_filter: str | None = None,
+    ) -> dict[str, Any]:
         """
         Returns paginated list of at-risk transactions with computed loss metrics.
         """

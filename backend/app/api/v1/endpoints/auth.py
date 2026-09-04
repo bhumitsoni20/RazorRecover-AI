@@ -1,14 +1,15 @@
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import get_db
-from app.core.config import settings
+
 from app.core.auth import get_current_merchant
+from app.core.config import settings
+from app.core.database import get_db
 from app.models.merchant import Merchant
 from app.schemas.auth import (
-    SignupRequest,
+    AuthResponse,
     LoginRequest,
     MerchantResponse,
-    AuthResponse,
+    SignupRequest,
 )
 from app.schemas.common import APIResponse
 from app.services.auth_service import AuthService
@@ -35,8 +36,8 @@ async def signup(
         httponly=True,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         expires=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="lax",
-        secure=settings.ENVIRONMENT != "development",
+        samesite=settings.COOKIE_SAMESITE,  # "none" in production for cross-origin HTTPS, "lax" in dev
+        secure=settings.COOKIE_SECURE,
         path="/",
     )
 
@@ -71,8 +72,8 @@ async def login(
         httponly=True,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         expires=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="lax",
-        secure=settings.ENVIRONMENT != "development",
+        samesite=settings.COOKIE_SAMESITE,
+        secure=settings.COOKIE_SECURE,
         path="/",
     )
 
@@ -97,7 +98,8 @@ async def logout(response: Response):
         key=settings.COOKIE_NAME,
         path="/",
         httponly=True,
-        samesite="lax",
+        samesite=settings.COOKIE_SAMESITE,
+        secure=settings.COOKIE_SECURE,
     )
     return APIResponse(success=True, data={"logged_out": True}, message="Successfully logged out")
 

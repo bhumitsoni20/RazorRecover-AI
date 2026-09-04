@@ -1,17 +1,18 @@
-from typing import Optional
+
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.core.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
+from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models.merchant import Merchant
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login", auto_error=False)
 
 
-async def get_token_from_request(request: Request, bearer_token: Optional[str] = Depends(oauth2_scheme)) -> Optional[str]:
+async def get_token_from_request(request: Request, bearer_token: str | None = Depends(oauth2_scheme)) -> str | None:
     """
     Extract token from Authorization header (Bearer) or HTTP-only cookie.
     """
@@ -24,7 +25,7 @@ async def get_token_from_request(request: Request, bearer_token: Optional[str] =
 
 
 async def get_current_merchant(
-    token: Optional[str] = Depends(get_token_from_request),
+    token: str | None = Depends(get_token_from_request),
     db: AsyncSession = Depends(get_db),
 ) -> Merchant:
     """
@@ -42,7 +43,7 @@ async def get_current_merchant(
     if not payload:
         raise credentials_exception
 
-    merchant_id: Optional[str] = payload.get("sub")
+    merchant_id: str | None = payload.get("sub")
     if not merchant_id:
         raise credentials_exception
 

@@ -1,4 +1,4 @@
-from typing import List, Optional
+
 from pydantic import BaseModel
 
 
@@ -10,7 +10,7 @@ class MetricSummary(BaseModel):
     total_transactions_analyzed: int
     pending_human_approvals: int
     anomaly_detected: bool = False
-    anomaly_message: Optional[str] = None
+    anomaly_message: str | None = None
 
 
 class RevenueLeakageItem(BaseModel):
@@ -47,6 +47,6 @@ class AIQueueItem(BaseModel):
 
 class DashboardSummaryResponse(BaseModel):
     metrics: MetricSummary
-    leakage_breakdown: List[RevenueLeakageItem]
-    trend: List[RecoveryTrendPoint]
-    recent_queue: List[AIQueueItem]
+    leakage_breakdown: list[RevenueLeakageItem]
+    trend: list[RecoveryTrendPoint]
+    recent_queue: list[AIQueueItem]

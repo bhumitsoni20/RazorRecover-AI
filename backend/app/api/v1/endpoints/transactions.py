@@ -1,11 +1,12 @@
-from typing import Optional
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import get_db
+
 from app.core.auth import get_current_verified_merchant
+from app.core.database import get_db
 from app.models.merchant import Merchant
-from app.schemas.transaction import TransactionListItem, TransactionDetailResponse
 from app.schemas.common import APIResponse, PaginatedResponse
+from app.schemas.transaction import TransactionDetailResponse, TransactionListItem
 from app.services.transaction_service import TransactionService
 
 router = APIRouter()
@@ -13,9 +14,9 @@ router = APIRouter()
 
 @router.get("", response_model=APIResponse[PaginatedResponse[TransactionListItem]])
 async def list_transactions(
-    status: Optional[str] = Query(None, description="Filter by status: failed, pending, recovered, success"),
-    payment_method: Optional[str] = Query(None, description="Filter by method: upi, card, netbanking, subscription"),
-    search: Optional[str] = Query(None, description="Search by customer name, email, or transaction ID"),
+    status: str | None = Query(None, description="Filter by status: failed, pending, recovered, success"),
+    payment_method: str | None = Query(None, description="Filter by method: upi, card, netbanking, subscription"),
+    search: str | None = Query(None, description="Search by customer name, email, or transaction ID"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     current_merchant: Merchant = Depends(get_current_verified_merchant),

@@ -8,8 +8,9 @@
   ],
   "extraPaths": [
     "./backend",
+    "./backend/.venv/Lib/site-packages",
     "."
   ],
-  "pythonVersion": "3.11",
+  "pythonVersion": "3.14",
   "pythonPlatform": "Windows"
 }

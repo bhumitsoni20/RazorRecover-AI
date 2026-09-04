@@ -1,5 +1,6 @@
 from enum import Enum
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -19,10 +20,10 @@ class RootCauseAnalysis(BaseModel):
     transaction_id: str
     root_cause: str
     confidence: float = Field(default=0.85, description="Model confidence between 0.0 and 1.0")
-    evidence: List[str] = Field(default_factory=list, description="Evidence-first factual points based strictly on signals")
+    evidence: list[str] = Field(default_factory=list, description="Evidence-first factual points based strictly on signals")
     explanation: str = Field(..., description="Explainable root cause diagnosis")
-    signals_analyzed: Optional[Dict[str, Any]] = None
-    analyzed_at: Optional[str] = None
+    signals_analyzed: dict[str, Any] | None = None
+    analyzed_at: str | None = None
 
     @field_validator("confidence", mode="before")
     @classmethod
@@ -39,4 +40,4 @@ class RootCauseAnalysis(BaseModel):
 
 
 class RootCauseRequest(BaseModel):
-    transaction_id: Optional[str] = None
+    transaction_id: str | None = None

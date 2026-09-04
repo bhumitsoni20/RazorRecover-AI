@@ -1,19 +1,21 @@
-from typing import Any, List, Optional, Tuple
+from typing import Any
+
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
-from app.models.transaction import Transaction
+
 from app.models.customer import Customer
-from app.models.revenue_risk import RevenueRisk
 from app.models.recovery_action import RecoveryAction
+from app.models.revenue_risk import RevenueRisk
+from app.models.transaction import Transaction
+from app.policies.policy_engine import PolicyEngine
 from app.schemas.transaction import (
-    TransactionListItem,
-    TransactionDetailResponse,
-    CustomerBrief,
     AIInvestigation,
+    CustomerBrief,
     PolicyCheckItem,
     RecoveryActionBrief,
+    TransactionDetailResponse,
+    TransactionListItem,
 )
-from app.policies.policy_engine import PolicyEngine
 from app.services.revenue_risk import RevenueRiskService
 
 
@@ -22,13 +24,13 @@ class TransactionService:
     async def list_transactions(
         cls,
         db: AsyncSession,
-        merchant_id: Optional[str] = None,
-        status: Optional[str] = None,
-        payment_method: Optional[str] = None,
-        search: Optional[str] = None,
+        merchant_id: str | None = None,
+        status: str | None = None,
+        payment_method: str | None = None,
+        search: str | None = None,
         page: int = 1,
         limit: int = 20,
-    ) -> Tuple[List[TransactionListItem], int]:
+    ) -> tuple[list[TransactionListItem], int]:
         offset = (page - 1) * limit
         query = (
             select(Transaction, Customer, RevenueRisk, RecoveryAction)
@@ -63,7 +65,7 @@ class TransactionService:
         query = query.order_by(desc(Transaction.created_at)).offset(offset).limit(limit)
         results = (await db.execute(query)).all()
 
-        items: List[TransactionListItem] = []
+        items: list[TransactionListItem] = []
         for txn, cust, risk, action in results:
             cust_succ_rate = (
                 float(cust.successful_transactions) / max(int(cust.total_transactions), 1) if cust else 0.85
@@ -109,8 +111,8 @@ class TransactionService:
         cls,
         db: AsyncSession,
         transaction_id: str,
-        merchant_id: Optional[str] = None,
-    ) -> Optional[TransactionDetailResponse]:
+        merchant_id: str | None = None,
+    ) -> TransactionDetailResponse | None:
         query = (
             select(Transaction, Customer, RevenueRisk)
             .join(Customer, Customer.id == Transaction.customer_id)
@@ -161,10 +163,8 @@ class TransactionService:
             policy_checks=[
                 c if isinstance(c, PolicyCheckItem) else PolicyCheckItem(
                     name=getattr(c, "name", c.get("name") if isinstance(c, dict) else str(c)),
-                    passed=getattr(c, "passed", c.get("passed") if isinstance(c, dict) else True),
-                    value=str(getattr(c, "value", c.get("value") if isinstance(c, dict) else "")),
-                    threshold=str(getattr(c, "threshold", c.get("threshold") if isinstance(c, dict) else "")),
-                    description=getattr(c, "description", c.get("description") if isinstance(c, dict) else ""),
+                    status=getattr(c, "status", c.get("status", "passed" if (c.get("passed", True) if isinstance(c, dict) else getattr(c, "passed", True)) else "failed") if isinstance(c, dict) else getattr(c, "status", "passed")),
+                    detail=getattr(c, "detail", c.get("detail", c.get("description", "")) if isinstance(c, dict) else getattr(c, "description", "")),
                 )
                 for c in checks
             ],
@@ -264,12 +264,10 @@ class TransactionService:
                 expected_recovery=round(amount * 0.87, 2),
                 policy_decision=verdict,
                 policy_checks=[
-                    PolicyCheckItem(
-                        name=c["name"],
-                        passed=c["passed"],
-                        value=str(c["value"]),
-                        threshold=str(c["threshold"]),
-                        description=c["description"],
+                    c if isinstance(c, PolicyCheckItem) else PolicyCheckItem(
+                        name=getattr(c, "name", c.get("name") if isinstance(c, dict) else str(c)),
+                        status=getattr(c, "status", c.get("status", "passed" if (c.get("passed", True) if isinstance(c, dict) else getattr(c, "passed", True)) else "failed") if isinstance(c, dict) else getattr(c, "status", "passed")),
+                        detail=getattr(c, "detail", c.get("detail", c.get("description", "")) if isinstance(c, dict) else getattr(c, "description", "")),
                     )
                     for c in checks
                 ],

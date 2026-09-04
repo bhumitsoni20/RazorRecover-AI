@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
@@ -30,12 +30,12 @@ class MerchantResponse(BaseModel):
     email: str
     role: str
     currency: str
-    razorpay_account_id: Optional[str] = None
+    razorpay_account_id: str | None = None
     razorpay_connection_status: str
     verification_status: str
     is_active: bool
     created_at: datetime
-    last_login: Optional[datetime] = None
+    last_login: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -49,14 +49,14 @@ class AuthResponse(BaseModel):
 
 
 class ConnectRazorpayRequest(BaseModel):
-    razorpay_account_id: Optional[str] = Field(None, description="Optional Razorpay Merchant Account ID (acc_...)")
+    razorpay_account_id: str | None = Field(None, description="Optional Razorpay Merchant Account ID (acc_...)")
 
 
 class DevVerifyRequest(BaseModel):
-    verification_status: Optional[str] = Field(None, description="Target status: VERIFIED, REJECTED, SUSPENDED, PENDING")
-    status: Optional[str] = Field(None, description="Alias for verification_status")
-    reason: Optional[str] = Field(None, description="Reason for verification status transition")
-    notes: Optional[str] = Field(None, description="Alias for reason")
+    verification_status: str | None = Field(None, description="Target status: VERIFIED, REJECTED, SUSPENDED, PENDING")
+    status: str | None = Field(None, description="Alias for verification_status")
+    reason: str | None = Field(None, description="Reason for verification status transition")
+    notes: str | None = Field(None, description="Alias for reason")
 
     def get_status(self) -> str:
         s = self.verification_status or self.status or "VERIFIED"
@@ -76,6 +76,6 @@ class VerificationStatusResponse(BaseModel):
     business_name: str
     verification_status: str
     razorpay_connection_status: str
-    razorpay_account_id: Optional[str] = None
+    razorpay_account_id: str | None = None
     can_access_dashboard: bool
     message: str

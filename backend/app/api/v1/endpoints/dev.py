@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import get_db
+
 from app.core.config import settings
+from app.core.database import get_db
 from app.schemas.auth import DevVerifyRequest
 from app.schemas.common import APIResponse
-from app.services.razorpay_verification_service import RazorpayMerchantVerificationService
+from app.services.razorpay_verification_service import (
+    RazorpayMerchantVerificationService,
+)
 
 router = APIRouter()
 

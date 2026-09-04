@@ -1,6 +1,8 @@
 import json
+from typing import Any
+
 import httpx
-from typing import Dict, Any, List, Optional
+
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -25,7 +27,7 @@ class GeminiLLMService:
         customer_name: str,
         customer_success_rate: float,
         retrieved_policy: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Calls Google Gemini API to analyze payment failure and generate structured reasoning.
         """

@@ -1,11 +1,15 @@
 import importlib.util
-from typing import Any, AsyncGenerator
+import os
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from sqlalchemy.ext.asyncio import (
-    create_async_engine,
     AsyncSession,
     async_sessionmaker,
+    create_async_engine,
 )
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeBase
+
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -27,12 +31,20 @@ if db_url.startswith("postgresql://") or db_url.startswith("postgresql+asyncpg:/
 elif db_url.startswith("sqlite://") and not db_url.startswith("sqlite+aiosqlite://"):
     db_url = db_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
 
+if "sqlite" in db_url and ":///" in db_url:
+    prefix, raw_path = db_url.split(":///", 1)
+    if not os.path.isabs(raw_path):
+        backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        abs_db_path = os.path.normpath(os.path.join(backend_dir, raw_path)).replace("\\", "/")
+        db_url = f"{prefix}:///{abs_db_path}"
+
 engine_kwargs: dict[str, Any] = {"echo": False, "future": True}
 if "sqlite" in db_url:
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 else:
     engine_kwargs["pool_size"] = 10
     engine_kwargs["max_overflow"] = 20
+
 
 engine = create_async_engine(db_url, **engine_kwargs)
 
@@ -44,7 +56,8 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

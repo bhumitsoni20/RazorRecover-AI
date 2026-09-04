@@ -1,6 +1,7 @@
+from typing import Any
+
 import numpy as np
-import pandas as pd
-from typing import Dict, Any, Tuple
+
 from app.core.logging import logger
 
 METHOD_MAP = {"upi": 0, "card": 1, "netbanking": 2, "subscription": 3, "wallet": 4}
@@ -17,14 +18,14 @@ REASON_MAP = {
 
 try:
     from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import train_test_split
     from sklearn.metrics import (
+        confusion_matrix,
+        f1_score,
         precision_score,
         recall_score,
-        f1_score,
         roc_auc_score,
-        confusion_matrix,
     )
+    from sklearn.model_selection import train_test_split
     HAS_SKLEARN = True
 except ImportError:
     HAS_SKLEARN = False
@@ -40,7 +41,7 @@ class RecoveryMLModel:
     def __init__(self):
         self.version = "1.2.0-logistic-regression"
         self.model = None
-        self.metrics: Dict[str, Any] = {}
+        self.metrics: dict[str, Any] = {}
         self.is_trained = False
         self._train_baseline_model()
 
@@ -136,7 +137,7 @@ class RecoveryMLModel:
         attempt_number: int = 1,
         customer_success_rate: float = 0.916,
         is_anomaly: bool = True,
-    ) -> Tuple[float, float, str]:
+    ) -> tuple[float, float, str]:
         if not self.is_trained:
             self._train_baseline_model()
 
@@ -172,7 +173,7 @@ class RecoveryMLModel:
 
         return prob_rounded, expected_recovery, self.version
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         return self.metrics
 
 

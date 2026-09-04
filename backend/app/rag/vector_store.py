@@ -1,9 +1,11 @@
 import os
 import re
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
 from app.core.logging import logger
 
 
@@ -14,7 +16,7 @@ class PolicyChunk:
         source: str,
         section: str,
         content: str,
-        keywords: Optional[List[str]] = None,
+        keywords: list[str] | None = None,
     ):
         self.chunk_id = chunk_id
         self.source = source
@@ -22,7 +24,7 @@ class PolicyChunk:
         self.content = content
         self.keywords = keywords or []
 
-    def to_dict(self, relevance_score: float = 0.0) -> Dict[str, Any]:
+    def to_dict(self, relevance_score: float = 0.0) -> dict[str, Any]:
         return {
             "chunk_id": self.chunk_id,
             "source": self.source,
@@ -38,7 +40,7 @@ class PolicyVectorStore:
     Combines TF-IDF semantic embeddings with keyword matching for exact merchant recovery policies.
     """
 
-    def __init__(self, policy_dir: Optional[str] = None):
+    def __init__(self, policy_dir: str | None = None):
         if policy_dir:
             self.policy_dir = policy_dir
         else:
@@ -48,8 +50,8 @@ class PolicyVectorStore:
                 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/policies"))
             self.policy_dir = base_dir
 
-        self.chunks: List[PolicyChunk] = []
-        self.vectorizer: Optional[TfidfVectorizer] = None
+        self.chunks: list[PolicyChunk] = []
+        self.vectorizer: TfidfVectorizer | None = None
         self.tfidf_matrix = None
         self.load_and_index()
 
@@ -143,7 +145,7 @@ class PolicyVectorStore:
                 )
             )
 
-    def search(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    def search(self, query: str, top_k: int = 3) -> list[dict[str, Any]]:
         """
         Performs hybrid semantic similarity + keyword boosted retrieval.
         Returns top-k chunks with relevance scores between 0.0 and 1.0.

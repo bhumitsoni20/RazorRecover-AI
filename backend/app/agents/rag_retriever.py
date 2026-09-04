@@ -1,8 +1,8 @@
-import json
-import re
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 import httpx
+
 from app.core.config import settings
 from app.core.logging import logger
 from app.rag.vector_store import policy_vector_store
@@ -23,11 +23,11 @@ class RAGRetrieverAgent:
         self,
         transaction_id: str,
         root_cause: str,
-        failure_reason: Optional[str] = None,
+        failure_reason: str | None = None,
         payment_method: str = "UPI",
         amount: float = 4999.0,
         attempt_count: int = 1,
-        anomaly_info: Optional[Dict[str, Any]] = None,
+        anomaly_info: dict[str, Any] | None = None,
     ) -> PolicyContextResponse:
         """
         Retrieves matching policy chunks and generates an explainable policy summary.
@@ -48,7 +48,7 @@ class RAGRetrieverAgent:
         # 2. Retrieve top-k chunks from vector store
         raw_results = policy_vector_store.search(query, top_k=2)
 
-        retrieved_chunks: List[RetrievedPolicyChunk] = []
+        retrieved_chunks: list[RetrievedPolicyChunk] = []
         for r in raw_results:
             retrieved_chunks.append(
                 RetrievedPolicyChunk(
@@ -99,7 +99,7 @@ class RAGRetrieverAgent:
         amount: float,
         attempt_count: int,
         policy_context: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         api_key = settings.GEMINI_API_KEY or getattr(settings, "LLM_API_KEY", "")
         if not api_key or api_key.startswith("your-") or "gemini-api-key" in api_key:
             return None
@@ -157,7 +157,7 @@ Do NOT invent rules that are not in the policy.
         root_cause: str,
         amount: float,
         attempt_count: int,
-        chunks: List[RetrievedPolicyChunk],
+        chunks: list[RetrievedPolicyChunk],
     ) -> str:
         if amount > 25000:
             return (

@@ -1,4 +1,5 @@
-from typing import Dict, List, Optional, Any
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -29,7 +30,7 @@ class EndToEndStepResult(BaseModel):
     status: str  # "PASS" | "FAIL"
     latency_ms: int
     summary: str
-    details: Dict[str, Any]
+    details: dict[str, Any]
 
 
 class EndToEndEvaluationResponse(BaseModel):
@@ -38,9 +39,9 @@ class EndToEndEvaluationResponse(BaseModel):
     transaction_id: str
     amount: float
     currency: str
-    recovery_link: Optional[str] = None
+    recovery_link: str | None = None
     recovered_amount: float = 0.0
-    steps: List[EndToEndStepResult]
+    steps: list[EndToEndStepResult]
     timestamp: str
 
 
@@ -59,7 +60,7 @@ class GuardrailTestSuiteResponse(BaseModel):
     passed_cases: int
     failed_cases: int
     all_passed: bool
-    results: List[GuardrailTestCaseResult]
+    results: list[GuardrailTestCaseResult]
     timestamp: str
 
 
@@ -77,8 +78,8 @@ class EvaluationMetricsResponse(BaseModel):
     actions_blocked_by_guardrails: int
     actions_requiring_human_approval: int
     avg_agent_latency_ms: int
-    category_breakdown: List[FailureCategoryMetric]
-    agent_performance: List[AgentPerformanceMetric]
+    category_breakdown: list[FailureCategoryMetric]
+    agent_performance: list[AgentPerformanceMetric]
     ml_roc_auc_score: float
     ml_precision: float
     ml_recall: float

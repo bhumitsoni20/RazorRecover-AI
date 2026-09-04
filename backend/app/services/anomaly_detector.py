@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Any
+
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, case
+
 from app.models.transaction import Transaction
-from app.core.logging import logger
 
 
 class AnomalyDetectorService:
@@ -19,7 +20,7 @@ class AnomalyDetectorService:
         cls,
         db: AsyncSession,
         recent_window_hours: int = 4,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Scans transaction history in the database to detect payment method degradation or failure spikes.
         """
@@ -69,7 +70,7 @@ class AnomalyDetectorService:
             for row in baseline_stats_query.all()
         }
 
-        detected_anomalies: List[Dict[str, Any]] = []
+        detected_anomalies: list[dict[str, Any]] = []
 
         all_methods = set(list(recent_stats.keys()) + list(baseline_stats.keys()) + cls.DEFAULT_METHODS)
 

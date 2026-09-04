@@ -1,19 +1,20 @@
 import time
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, cast
+from typing import Any, cast
+
 from typing_extensions import TypedDict
 
 try:
-    from langgraph.graph import StateGraph, START, END
+    from langgraph.graph import END, START, StateGraph
 except ImportError:
     START = "__start__"
     END = "__end__"
 
     class _FallbackStateGraph:
         def __init__(self, state_schema: Any):
-            self.nodes: Dict[str, Any] = {}
-            self.edges: List[Any] = []
-            self.conditional_edges: Dict[str, Any] = {}
+            self.nodes: dict[str, Any] = {}
+            self.edges: list[Any] = []
+            self.conditional_edges: dict[str, Any] = {}
 
         def add_node(self, name: str, func: Any) -> None:
             self.nodes[name] = func
@@ -21,13 +22,13 @@ except ImportError:
         def add_edge(self, src: str, dst: str) -> None:
             self.edges.append((src, dst))
 
-        def add_conditional_edges(self, src: str, router_func: Any, path_map: Optional[Dict[str, str]] = None) -> None:
+        def add_conditional_edges(self, src: str, router_func: Any, path_map: dict[str, str] | None = None) -> None:
             self.conditional_edges[src] = (router_func, path_map)
 
         def compile(self) -> "_FallbackStateGraph":
             return self
 
-        async def ainvoke(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
             # Sequential pipeline execution adhering to graph topology
             current_node = "detect_risk"
             while current_node and current_node != END and current_node != "__end__":
@@ -54,12 +55,11 @@ except ImportError:
 
     StateGraph: Any = _FallbackStateGraph
 
+from app.agents.rag_retriever import rag_retriever_agent
+from app.agents.root_cause_agent import root_cause_agent
+from app.integrations.razorpay_service import razorpay_service
 from app.ml.recovery_model import ml_recovery_model
 from app.policies.policy_engine import PolicyEngine
-from app.integrations.razorpay_service import razorpay_service
-from app.agents.root_cause_agent import root_cause_agent
-from app.agents.rag_retriever import rag_retriever_agent
-from app.core.logging import logger
 
 
 class WorkflowState(TypedDict, total=False):
@@ -80,19 +80,19 @@ class WorkflowState(TypedDict, total=False):
 
     # Phase 4: Revenue Risk Detection output
     is_anomaly: bool
-    anomaly_payload: Dict[str, Any]
+    anomaly_payload: dict[str, Any]
 
     # Phase 5: Root Cause Agent output
     root_cause: str
     root_cause_confidence: float
-    evidence: List[str]
+    evidence: list[str]
     root_cause_explanation: str
-    root_cause_analysis: Dict[str, Any]
+    root_cause_analysis: dict[str, Any]
 
     # Phase 6: RAG Policy Retrieval output
-    rag_context: Dict[str, Any]
-    retrieved_policies: List[Dict[str, Any]]
-    policy_citations: List[str]
+    rag_context: dict[str, Any]
+    retrieved_policies: list[dict[str, Any]]
+    policy_citations: list[str]
     rag_evidence: str
 
     # ML Recovery Probability Prediction output
@@ -108,15 +108,15 @@ class WorkflowState(TypedDict, total=False):
 
     # Phase 8: Deterministic Guardrails output
     policy_verdict: str
-    policy_checks: List[Dict[str, Any]]
-    policy_reasons: List[str]
+    policy_checks: list[dict[str, Any]]
+    policy_reasons: list[str]
 
     # Phase 9: Execution output
-    execution_result: Dict[str, Any]
+    execution_result: dict[str, Any]
 
     # Verification & Audit output
-    verification_result: Dict[str, Any]
-    audit_trail: List[Dict[str, Any]]
+    verification_result: dict[str, Any]
+    audit_trail: list[dict[str, Any]]
     status: str
     latency_ms: int
     timestamp: str
@@ -126,7 +126,7 @@ class WorkflowState(TypedDict, total=False):
 # LangGraph Workflow Nodes
 # ==========================================
 
-async def detect_risk_node(state: WorkflowState) -> Dict[str, Any]:
+async def detect_risk_node(state: WorkflowState) -> dict[str, Any]:
     """Node 1: Detect failure anomaly and revenue loss risk."""
     pm = state.get("payment_method", "upi").lower()
     fr = state.get("failure_reason", "").lower()
@@ -142,7 +142,7 @@ async def detect_risk_node(state: WorkflowState) -> Dict[str, Any]:
     }
 
 
-async def root_cause_node(state: WorkflowState) -> Dict[str, Any]:
+async def root_cause_node(state: WorkflowState) -> dict[str, Any]:
     """Node 2: Diagnose root cause using Gemini 2.5 Flash with factual evidence."""
     root_cause_res = await root_cause_agent.analyze(
         transaction_id=state.get("transaction_id", ""),
@@ -165,7 +165,7 @@ async def root_cause_node(state: WorkflowState) -> Dict[str, Any]:
     }
 
 
-async def rag_retrieval_node(state: WorkflowState) -> Dict[str, Any]:
+async def rag_retrieval_node(state: WorkflowState) -> dict[str, Any]:
     """Node 3: Retrieve merchant policy context and generate grounded summary."""
     rag_context = await rag_retriever_agent.retrieve_policy_context(
         transaction_id=state.get("transaction_id", ""),
@@ -188,7 +188,7 @@ async def rag_retrieval_node(state: WorkflowState) -> Dict[str, Any]:
     }
 
 
-async def predict_probability_node(state: WorkflowState) -> Dict[str, Any]:
+async def predict_probability_node(state: WorkflowState) -> dict[str, Any]:
     """Node 4: Predict ML recovery probability and expected yield."""
     recovery_prob, expected_recovery, model_ver = ml_recovery_model.predict(
         amount=state.get("amount", 0.0),
@@ -205,7 +205,7 @@ async def predict_probability_node(state: WorkflowState) -> Dict[str, Any]:
     }
 
 
-async def strategy_node(state: WorkflowState) -> Dict[str, Any]:
+async def strategy_node(state: WorkflowState) -> dict[str, Any]:
     """Node 5: Select optimal recovery strategy based on root cause & telemetry."""
     root_cause = state.get("root_cause", "").lower()
     if "abandon" in root_cause:
@@ -226,7 +226,7 @@ async def strategy_node(state: WorkflowState) -> Dict[str, Any]:
     }
 
 
-async def guardrail_node(state: WorkflowState) -> Dict[str, Any]:
+async def guardrail_node(state: WorkflowState) -> dict[str, Any]:
     """Node 6: Authoritative deterministic guardrails check."""
     recovery_prob = state.get("recovery_probability", 0.85)
     customer_risk = round(1.0 - recovery_prob * 0.9, 2)
@@ -256,7 +256,7 @@ def route_guardrail_verdict(state: WorkflowState) -> str:
         return "block_action"
 
 
-async def execute_action_node(state: WorkflowState) -> Dict[str, Any]:
+async def execute_action_node(state: WorkflowState) -> dict[str, Any]:
     """Node 7A: Dispatch Razorpay Test Mode Payment Link."""
     amount = state.get("amount", 0.0)
     tx_id = state.get("transaction_id", "")
@@ -285,7 +285,7 @@ async def execute_action_node(state: WorkflowState) -> Dict[str, Any]:
     }
 
 
-async def route_human_review_node(state: WorkflowState) -> Dict[str, Any]:
+async def route_human_review_node(state: WorkflowState) -> dict[str, Any]:
     """Node 7B: Route to Merchant Human Review Queue."""
     amount = state.get("amount", 0.0)
     return {
@@ -297,7 +297,7 @@ async def route_human_review_node(state: WorkflowState) -> Dict[str, Any]:
     }
 
 
-async def block_action_node(state: WorkflowState) -> Dict[str, Any]:
+async def block_action_node(state: WorkflowState) -> dict[str, Any]:
     """Node 7C: Block autonomous recovery per policy safety limits."""
     reasons = state.get("policy_reasons", ["Recovery blocked by policy guardrails."])
     return {
@@ -309,7 +309,7 @@ async def block_action_node(state: WorkflowState) -> Dict[str, Any]:
     }
 
 
-async def verify_result_node(state: WorkflowState) -> Dict[str, Any]:
+async def verify_result_node(state: WorkflowState) -> dict[str, Any]:
     """Node 8: Verify recovery action dispatch status."""
     exec_res = state.get("execution_result", {})
     status = exec_res.get("status", "")
@@ -337,7 +337,7 @@ async def verify_result_node(state: WorkflowState) -> Dict[str, Any]:
     return {"verification_result": verification}
 
 
-async def audit_node(state: WorkflowState) -> Dict[str, Any]:
+async def audit_node(state: WorkflowState) -> dict[str, Any]:
     """Node 9: Compile observable multi-agent audit trail."""
     start_time = state.get("start_time", time.time())
     latency_ms = max(int((time.time() - start_time) * 1000), 120)
@@ -433,7 +433,7 @@ class MultiAgentWorkflow:
         bank: str = "HDFC",
         customer_success_rate: float = 0.867,
         is_simulation_mode: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         start_time = time.time()
 
         initial_state: WorkflowState = {

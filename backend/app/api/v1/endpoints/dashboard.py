@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import get_db
+
 from app.core.auth import get_current_verified_merchant
+from app.core.database import get_db
 from app.models.merchant import Merchant
-from app.schemas.dashboard import DashboardSummaryResponse
 from app.schemas.common import APIResponse
+from app.schemas.dashboard import DashboardSummaryResponse
 from app.services.dashboard_service import DashboardService
 
 router = APIRouter()

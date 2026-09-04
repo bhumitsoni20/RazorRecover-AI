@@ -1,33 +1,35 @@
-from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, Query, Path
+from typing import Any
+
+from fastapi import APIRouter, Depends, Path, Query
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
-from app.core.database import get_db
+
 from app.core.auth import get_current_verified_merchant
+from app.core.database import get_db
+from app.integrations.razorpay_service import razorpay_service
+from app.models.customer import Customer
 from app.models.merchant import Merchant
 from app.models.recovery_action import RecoveryAction
 from app.models.transaction import Transaction
-from app.models.customer import Customer
+from app.schemas.common import APIResponse
 from app.schemas.recovery import (
     AnalyzeRequest,
     AnalyzeResponse,
-    ExecuteRequest,
-    ExecuteResponse,
     ApproveRequest,
     ApproveResponse,
+    ExecuteRequest,
+    ExecuteResponse,
     RecoveryActionItem,
 )
-from app.schemas.common import APIResponse
 from app.services.recovery_service import RecoveryService
-from app.integrations.razorpay_service import razorpay_service
 
 router = APIRouter()
 
 
-@router.get("/actions", response_model=APIResponse[List[RecoveryActionItem]])
+@router.get("/actions", response_model=APIResponse[list[RecoveryActionItem]])
 async def list_recovery_actions(
-    status: Optional[str] = Query(None),
-    policy_decision: Optional[str] = Query(None),
+    status: str | None = Query(None),
+    policy_decision: str | None = Query(None),
     current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
 ):
@@ -57,7 +59,7 @@ async def list_recovery_actions(
     query = query.order_by(desc(RecoveryAction.created_at)).limit(100)
     results = (await db.execute(query)).all()
 
-    items: List[RecoveryActionItem] = []
+    items: list[RecoveryActionItem] = []
     for action, txn, cust in results:
         items.append(
             RecoveryActionItem(
@@ -81,8 +83,8 @@ async def list_recovery_actions(
     return APIResponse(success=True, data=items)
 
 
-@router.get("/{transaction_id}/status", response_model=APIResponse[Dict[str, Any]])
-@router.get("/{transaction_id}", response_model=APIResponse[Dict[str, Any]])
+@router.get("/{transaction_id}/status", response_model=APIResponse[dict[str, Any]])
+@router.get("/{transaction_id}", response_model=APIResponse[dict[str, Any]])
 async def get_recovery_status(
     transaction_id: str = Path(...),
     current_merchant: Merchant = Depends(get_current_verified_merchant),
@@ -95,7 +97,7 @@ async def get_recovery_status(
 @router.post("/analyze", response_model=APIResponse[AnalyzeResponse])
 @router.post("/{transaction_id}/analyze", response_model=APIResponse[AnalyzeResponse])
 async def analyze_transaction(
-    transaction_id: Optional[str] = None,
+    transaction_id: str | None = None,
     request: AnalyzeRequest = AnalyzeRequest(),
     current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
@@ -108,7 +110,7 @@ async def analyze_transaction(
 @router.post("/execute", response_model=APIResponse[ExecuteResponse])
 @router.post("/{transaction_id}/execute", response_model=APIResponse[ExecuteResponse])
 async def execute_recovery(
-    transaction_id: Optional[str] = None,
+    transaction_id: str | None = None,
     request: ExecuteRequest = ExecuteRequest(),
     current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
@@ -126,7 +128,7 @@ async def execute_recovery(
 @router.post("/approve", response_model=APIResponse[ApproveResponse])
 @router.post("/{transaction_id}/approve", response_model=APIResponse[ApproveResponse])
 async def approve_recovery(
-    transaction_id: Optional[str] = None,
+    transaction_id: str | None = None,
     request: ApproveRequest = ApproveRequest(),
     current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
@@ -141,7 +143,7 @@ async def approve_recovery(
     return APIResponse(success=True, data=result)
 
 
-@router.post("/{transaction_id}/create-order", response_model=APIResponse[Dict[str, Any]])
+@router.post("/{transaction_id}/create-order", response_model=APIResponse[dict[str, Any]])
 async def create_razorpay_order(
     transaction_id: str = Path(...),
     db: AsyncSession = Depends(get_db),

@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
-from typing import List, Union, Any
+from typing import Any, Literal
+
 from dotenv import load_dotenv
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Ensure .env is explicitly loaded from both root workspace and backend directories
@@ -39,13 +40,37 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+    # Frontend URL
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://razorrecover.vercel.app")
+
     # CORS
-    CORS_ORIGINS: List[str] = [
+    CORS_ORIGINS: list[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:8000",
         "https://razorrecover.vercel.app",
     ]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def validate_cors_origins(cls, v: Any) -> list[str]:
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            v_str = v.strip()
+            if v_str.startswith("[") and v_str.endswith("]"):
+                import json
+                try:
+                    return json.loads(v_str)
+                except Exception:
+                    pass
+            return [origin.strip() for origin in v_str.split(",") if origin.strip()]
+        return [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:8000",
+            "https://razorrecover.vercel.app",
+        ]
 
     # Google Gemini & LLM Configuration
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "gemini")
@@ -66,6 +91,17 @@ class Settings(BaseSettings):
     AUTH_SECRET: str = os.getenv("AUTH_SECRET", "super-secret-auth-key-change-in-production-razorrecover-2026")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
     COOKIE_NAME: str = "access_token"
+    COOKIE_SAMESITE: Literal["lax", "none", "strict"] = "lax"
+    COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "true" if os.getenv("ENVIRONMENT") == "production" else "false").lower() in ("true", "1", "yes")
+
+    @field_validator("COOKIE_SAMESITE", mode="before")
+    @classmethod
+    def validate_cookie_samesite(cls, v: Any) -> Literal["lax", "none", "strict"]:
+        if isinstance(v, str):
+            v_clean = v.strip().lower()
+            if v_clean in ("lax", "none", "strict"):
+                return v_clean  # type: ignore[return-value]
+        return "none" if os.getenv("ENVIRONMENT") == "production" else "lax"
 
     # Initial Admin Seed Credentials
     INITIAL_ADMIN_EMAIL: str = os.getenv("INITIAL_ADMIN_EMAIL", "admin@razorrecover.ai")

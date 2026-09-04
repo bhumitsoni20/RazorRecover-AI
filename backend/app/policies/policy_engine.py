@@ -1,4 +1,5 @@
-from typing import List, Tuple, Dict, Any, Optional
+from typing import Any
+
 from app.core.config import settings
 from app.schemas.transaction import PolicyCheckItem
 
@@ -23,7 +24,7 @@ class PolicyEngine:
         proposed_discount_pct: float = 0.0,
         transaction_status: str = "failed",
         has_active_link: bool = False,
-    ) -> Tuple[str, List[PolicyCheckItem], List[str]]:
+    ) -> tuple[str, list[PolicyCheckItem], list[str]]:
         """
         Evaluates proposed AI action against deterministic rules.
         Returns:
@@ -31,8 +32,8 @@ class PolicyEngine:
             - check_items: List of granular pass/fail checks
             - reasons: Summary list of explanations
         """
-        checks: List[PolicyCheckItem] = []
-        reasons: List[str] = []
+        checks: list[PolicyCheckItem] = []
+        reasons: list[str] = []
         is_blocked = False
         requires_human = False
 
@@ -192,7 +193,7 @@ class PolicyEngine:
         return verdict, checks, reasons
 
     @classmethod
-    def evaluate_structured(cls, **kwargs) -> Dict[str, Any]:
+    def evaluate_structured(cls, **kwargs) -> dict[str, Any]:
         """Convenience method returning a JSON-serializable dictionary."""
         verdict, checks, reasons = cls.evaluate(**kwargs)
         return {

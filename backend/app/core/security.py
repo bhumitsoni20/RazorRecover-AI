@@ -1,7 +1,9 @@
+from datetime import datetime, timedelta
+from typing import Any
+
 import bcrypt
 import jwt
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+
 from app.core.config import settings
 
 ALGORITHM = "HS256"
@@ -28,7 +30,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """
     Create a signed JWT access token.
     """
@@ -42,7 +44,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     return encoded_jwt
 
 
-def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
+def decode_access_token(token: str) -> dict[str, Any] | None:
     """
     Decode and validate JWT access token.
     """

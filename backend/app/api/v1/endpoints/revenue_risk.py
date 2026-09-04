@@ -1,25 +1,26 @@
-from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, HTTPException, Path
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
-from app.core.database import get_db
+
+from app.agents.rag_retriever import rag_retriever_agent
+from app.agents.root_cause_agent import root_cause_agent
 from app.core.auth import get_current_verified_merchant
+from app.core.database import get_db
+from app.models.customer import Customer
 from app.models.merchant import Merchant
 from app.models.revenue_risk import RevenueRisk
 from app.models.transaction import Transaction
-from app.models.customer import Customer
+from app.schemas.common import APIResponse
+from app.schemas.rag import PolicyContextResponse
 from app.schemas.revenue_risk import (
-    RevenueRiskSummaryResponse,
     PaginatedTransactionRiskResponse,
     RevenueRiskItem,
+    RevenueRiskSummaryResponse,
 )
 from app.schemas.root_cause import RootCauseAnalysis
-from app.schemas.rag import PolicyContextResponse
-from app.schemas.common import APIResponse
-from app.services.revenue_risk import RevenueRiskService
 from app.services.anomaly_detector import AnomalyDetectorService
-from app.agents.root_cause_agent import root_cause_agent
-from app.agents.rag_retriever import rag_retriever_agent
+from app.services.revenue_risk import RevenueRiskService
 
 router = APIRouter()
 
@@ -42,7 +43,7 @@ async def get_revenue_risk_summary(
 async def get_transaction_risks(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
-    risk_level: Optional[str] = Query(None, description="Filter by risk level: LOW, MEDIUM, HIGH, CRITICAL"),
+    risk_level: str | None = Query(None, description="Filter by risk level: LOW, MEDIUM, HIGH, CRITICAL"),
     current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
 ):
@@ -59,7 +60,7 @@ async def get_transaction_risks(
     return APIResponse(success=True, data=result)
 
 
-@router.get("/items", response_model=APIResponse[List[RevenueRiskItem]])
+@router.get("/items", response_model=APIResponse[list[RevenueRiskItem]])
 async def list_legacy_revenue_risks(
     current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
@@ -77,7 +78,7 @@ async def list_legacy_revenue_risks(
     )
     results = (await db.execute(query)).all()
 
-    items: List[RevenueRiskItem] = []
+    items: list[RevenueRiskItem] = []
     for risk, txn, cust in results:
         items.append(
             RevenueRiskItem(
