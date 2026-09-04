@@ -24,7 +24,7 @@ from app.services.audit_service import AuditService
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class RecoveryService:

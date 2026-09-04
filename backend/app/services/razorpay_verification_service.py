@@ -35,7 +35,7 @@ class RazorpayMerchantVerificationService:
         acc_id = razorpay_account_id or f"acc_rzp_{uuid.uuid4().hex[:10]}"
         merchant.razorpay_account_id = acc_id
         merchant.razorpay_connection_status = "CONNECTED"
-        merchant.updated_at = datetime.now(timezone.utc)
+        merchant.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Record audit log
         await cls._record_audit(
@@ -113,7 +113,7 @@ class RazorpayMerchantVerificationService:
 
         old_status = str(merchant.verification_status)
         merchant.verification_status = new_status
-        merchant.updated_at = datetime.now(timezone.utc)
+        merchant.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         reason_str = reason or f"Merchant verification status transition: {old_status} -> {new_status}"
         audit_summary = f"Merchant verification status changed: {old_status} -> {new_status}"
