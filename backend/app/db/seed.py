@@ -38,9 +38,13 @@ async def seed_database():
 
     async with AsyncSessionLocal() as session:
         # 1. Seed Admin
-        admin_email = settings.INITIAL_ADMIN_EMAIL.lower()
-        admin_res = await session.execute(select(Merchant).where(Merchant.email == admin_email))
-        admin = admin_res.scalar_one_or_none()
+        admin_email = (settings.INITIAL_ADMIN_EMAIL or "admin@razorrecover.ai").strip().lower()
+        admin = await session.get(Merchant, "mch_admin_global")
+        if not admin:
+            admin_by_email = (await session.execute(select(Merchant).where(Merchant.email == admin_email))).scalar_one_or_none()
+            if admin_by_email:
+                admin = admin_by_email
+        
         if not admin:
             admin = Merchant(
                 id="mch_admin_global",
@@ -56,12 +60,25 @@ async def seed_database():
                 is_active=True,
             )
             session.add(admin)
+            await session.flush()
             logger.info(f"Created Admin account: {admin_email}")
+        else:
+            admin.password_hash = hash_password(settings.INITIAL_ADMIN_PASSWORD)
+            admin.verification_status = "VERIFIED"
+            admin.is_active = True
+            await session.flush()
 
         # 2. Seed Demo Merchant 1 (Demo Electronics - VERIFIED)
-        m1_email = settings.DEMO_MERCHANT_1_EMAIL.lower()
-        m1_res = await session.execute(select(Merchant).where(Merchant.email == m1_email))
-        m1 = m1_res.scalar_one_or_none()
+        m1_email = (settings.DEMO_MERCHANT_1_EMAIL or "merchant1@demo.razorrecover.ai").strip().lower()
+        if m1_email == admin_email:
+            m1_email = "merchant1@demo.razorrecover.ai"
+
+        m1 = await session.get(Merchant, "mch_razorpay_demo")
+        if not m1:
+            m1_by_email = (await session.execute(select(Merchant).where(Merchant.email == m1_email))).scalar_one_or_none()
+            if m1_by_email:
+                m1 = m1_by_email
+
         if not m1:
             m1 = Merchant(
                 id="mch_razorpay_demo",
@@ -77,16 +94,25 @@ async def seed_database():
                 is_active=True,
             )
             session.add(m1)
+            await session.flush()
             logger.info(f"Created Demo Merchant 1 (VERIFIED): {m1_email}")
         else:
-            # Ensure password hash and status are up to date
             m1.verification_status = "VERIFIED"
             m1.password_hash = hash_password(settings.DEMO_MERCHANT_1_PASSWORD)
+            m1.is_active = True
+            await session.flush()
 
         # 3. Seed Demo Merchant 2 (Demo Fashion Store - PENDING)
-        m2_email = settings.DEMO_MERCHANT_2_EMAIL.lower()
-        m2_res = await session.execute(select(Merchant).where(Merchant.email == m2_email))
-        m2 = m2_res.scalar_one_or_none()
+        m2_email = (settings.DEMO_MERCHANT_2_EMAIL or "merchant2@demo.razorrecover.ai").strip().lower()
+        if m2_email in (admin_email, m1_email):
+            m2_email = "merchant2@demo.razorrecover.ai"
+
+        m2 = await session.get(Merchant, "mch_demo_fashion")
+        if not m2:
+            m2_by_email = (await session.execute(select(Merchant).where(Merchant.email == m2_email))).scalar_one_or_none()
+            if m2_by_email:
+                m2 = m2_by_email
+
         if not m2:
             m2 = Merchant(
                 id="mch_demo_fashion",
@@ -102,12 +128,13 @@ async def seed_database():
                 is_active=True,
             )
             session.add(m2)
+            await session.flush()
             logger.info(f"Created Demo Merchant 2 (PENDING): {m2_email}")
         else:
             m2.verification_status = "PENDING"
             m2.password_hash = hash_password(settings.DEMO_MERCHANT_2_PASSWORD)
-
-        await session.flush()
+            m2.is_active = True
+            await session.flush()
 
         # 4. Customers for Merchant 1 (Demo Electronics)
         customers_m1 = [
