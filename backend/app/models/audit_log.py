@@ -1,7 +1,8 @@
 import hashlib
 import json
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, JSON, Index
+from sqlalchemy import Column, String, DateTime, JSON, ForeignKey, Index
+from sqlalchemy.orm import relationship
 import uuid
 from app.core.database import Base
 
@@ -10,6 +11,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(String(64), primary_key=True, default=lambda: f"aud_{uuid.uuid4().hex[:12]}")
+    merchant_id = Column(String(64), ForeignKey("merchants.id", ondelete="CASCADE"), nullable=True, index=True)
     transaction_id = Column(String(64), nullable=True, index=True)
     agent_name = Column(String(128), nullable=False, index=True)
     actor = Column(String(128), default="system", nullable=False)
@@ -22,8 +24,11 @@ class AuditLog(Base):
     event_hash = Column(String(64), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
+    merchant = relationship("Merchant", back_populates="audit_logs")
+
     __table_args__ = (
         Index("ix_audit_logs_agent_created", "agent_name", "created_at"),
+        Index("ix_audit_logs_merchant_created", "merchant_id", "created_at"),
     )
 
     @classmethod
@@ -37,6 +42,7 @@ class AuditLog(Base):
         policy_result: str | None,
         previous_hash: str,
         created_at_str: str,
+        merchant_id: str | None = None,
     ) -> str:
-        payload = f"{id_str}|{transaction_id or ''}|{agent_name}|{action}|{reasoning_summary}|{policy_result or ''}|{previous_hash}|{created_at_str}"
+        payload = f"{id_str}|{merchant_id or ''}|{transaction_id or ''}|{agent_name}|{action}|{reasoning_summary}|{policy_result or ''}|{previous_hash}|{created_at_str}"
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()

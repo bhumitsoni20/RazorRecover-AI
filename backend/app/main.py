@@ -14,6 +14,8 @@ setup_logging()
 async def lifespan(app: FastAPI):
     logger.info("Starting up RazorRecover AI backend...")
     await init_db()
+    from app.db.seed import seed_database
+    await seed_database()
     logger.info("RazorRecover AI backend initialized successfully.")
     yield
     logger.info("Shutting down RazorRecover AI backend...")
@@ -28,14 +30,16 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS configuration
+# CORS configuration - explicit origins required when allow_credentials=True
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.ENVIRONMENT == "development" else settings.CORS_ORIGINS,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 # Root endpoint

@@ -116,78 +116,76 @@ async def test_anomaly_detection_logic():
 # =========================================================
 
 @pytest.mark.asyncio
-async def test_get_revenue_risk_summary_api():
+async def test_get_revenue_risk_summary_api(async_client):
     """
     Test GET /api/revenue-risk returns structured summary metrics.
     """
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/api/revenue-risk")
-        assert response.status_code == 200
-        json_data = response.json()
-        assert json_data["success"] is True
+    response = await async_client.get("/api/revenue-risk")
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["success"] is True
 
-        data = json_data["data"]
-        assert "total_revenue_at_risk" in data
-        assert "currency" in data
-        assert data["currency"] == "INR"
-        assert "transaction_count" in data
-        assert "average_loss_probability" in data
-        assert "top_risk_sources" in data
-        assert "risk_distribution" in data
-        assert isinstance(data["top_risk_sources"], list)
-        assert isinstance(data["risk_distribution"], dict)
+    data = json_data["data"]
+    assert "total_revenue_at_risk" in data
+    assert "currency" in data
+    assert data["currency"] == "INR"
+    assert "transaction_count" in data
+    assert "average_loss_probability" in data
+    assert "top_risk_sources" in data
+    assert "risk_distribution" in data
+    assert isinstance(data["top_risk_sources"], list)
+    assert isinstance(data["risk_distribution"], dict)
 
 
 @pytest.mark.asyncio
-async def test_get_transaction_risks_api():
+async def test_get_transaction_risks_api(async_client):
     """
     Test GET /api/revenue-risk/transactions returns paginated transaction risk items.
     """
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/api/revenue-risk/transactions?page=1&limit=10")
-        assert response.status_code == 200
-        json_data = response.json()
-        assert json_data["success"] is True
+    response = await async_client.get("/api/revenue-risk/transactions?page=1&limit=10")
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["success"] is True
 
-        data = json_data["data"]
-        assert "items" in data
-        assert "total" in data
-        assert "page" in data
-        assert "limit" in data
-        assert "total_pages" in data
+    data = json_data["data"]
+    assert "items" in data
+    assert "total" in data
+    assert "page" in data
+    assert "limit" in data
+    assert "total_pages" in data
 
-        if len(data["items"]) > 0:
-            first_item = data["items"][0]
-            assert "transaction_id" in first_item
-            assert "amount" in first_item
-            assert "loss_probability" in first_item
-            assert "successful_recovery_probability" in first_item
-            assert "revenue_at_risk" in first_item
-            assert "risk_level" in first_item
-            assert first_item["risk_level"] in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
-            assert "explanation" in first_item
+    if len(data["items"]) > 0:
+        first_item = data["items"][0]
+        assert "transaction_id" in first_item
+        assert "amount" in first_item
+        assert "loss_probability" in first_item
+        assert "successful_recovery_probability" in first_item
+        assert "revenue_at_risk" in first_item
+        assert "risk_level" in first_item
+        assert first_item["risk_level"] in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+        assert "explanation" in first_item
 
 
 @pytest.mark.asyncio
-async def test_dashboard_real_revenue_at_risk():
+async def test_dashboard_real_revenue_at_risk(async_client):
     """
     Test GET /api/dashboard/summary reflects real database revenue at risk.
     """
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/api/dashboard/summary")
-        assert response.status_code == 200
-        json_data = response.json()
-        assert json_data["success"] is True
+    response = await async_client.get("/api/dashboard/summary")
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["success"] is True
 
-        metrics = json_data["data"]["metrics"]
-        assert "revenue_at_risk" in metrics
-        assert isinstance(metrics["revenue_at_risk"], (int, float))
-        assert metrics["revenue_at_risk"] >= 0.0
+    metrics = json_data["data"]["metrics"]
+    assert "revenue_at_risk" in metrics
+    assert isinstance(metrics["revenue_at_risk"], (int, float))
+    assert metrics["revenue_at_risk"] >= 0.0
 
-        trend = json_data["data"]["trend"]
-        assert len(trend) == 7
-        for point in trend:
-            assert "date" in point
-            assert "revenue_at_risk" in point
-            assert "revenue_recovered" in point
-            assert "recovery_rate" in point
+    trend = json_data["data"]["trend"]
+    assert len(trend) == 7
+    for point in trend:
+        assert "date" in point
+        assert "revenue_at_risk" in point
+        assert "revenue_recovered" in point
+        assert "recovery_rate" in point
+

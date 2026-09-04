@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, and_
 from app.models.transaction import Transaction
@@ -7,7 +7,6 @@ from app.models.customer import Customer
 from app.models.revenue_risk import RevenueRisk
 from app.models.recovery_action import RecoveryAction
 from app.services.revenue_risk import RevenueRiskService
-from app.services.anomaly_detector import AnomalyDetectorService
 from app.schemas.dashboard import (
     DashboardSummaryResponse,
     MetricSummary,
@@ -19,40 +18,50 @@ from app.schemas.dashboard import (
 
 class DashboardService:
     @classmethod
-    async def get_summary(cls, db: AsyncSession) -> DashboardSummaryResponse:
-        # 1. Real Deterministic Revenue at Risk & Anomaly Summary
-        risk_summary = await RevenueRiskService.get_revenue_risk_summary(db)
+    async def get_summary(cls, db: AsyncSession, merchant_id: Optional[str] = None) -> DashboardSummaryResponse:
+        # 1. Real Deterministic Revenue at Risk & Anomaly Summary for Merchant
+        risk_summary = await RevenueRiskService.get_revenue_risk_summary(db, merchant_id=merchant_id)
         revenue_at_risk = risk_summary["total_revenue_at_risk"]
         anomaly_detected = risk_summary["anomaly_detected"]
         anomaly_message = risk_summary["anomaly_message"]
 
         # 2. Total Recovered Revenue (from Transaction status == 'recovered')
-        recovered_query = await db.execute(
-            select(
-                func.coalesce(func.sum(Transaction.amount), 0.0)
-            ).where(Transaction.status == "recovered")
-        )
+        recovered_stmt = select(func.coalesce(func.sum(Transaction.amount), 0.0)).where(Transaction.status == "recovered")
+        if merchant_id:
+            recovered_stmt = recovered_stmt.where(Transaction.merchant_id == merchant_id)
+        recovered_query = await db.execute(recovered_stmt)
         recovered_revenue = float(recovered_query.scalar() or 0.0)
 
         # 3. Active AI actions
-        active_actions_query = await db.execute(
-            select(func.count(RecoveryAction.id)).where(
-                RecoveryAction.status.in_(["pending", "executing", "executed"])
-            )
+        active_actions_stmt = (
+            select(func.count(RecoveryAction.id))
+            .join(Transaction, Transaction.id == RecoveryAction.transaction_id)
+            .where(RecoveryAction.status.in_(["pending", "executing", "executed"]))
         )
+        if merchant_id:
+            active_actions_stmt = active_actions_stmt.where(Transaction.merchant_id == merchant_id)
+        active_actions_query = await db.execute(active_actions_stmt)
         active_actions = int(active_actions_query.scalar() or 0)
 
         # 4. Pending human approvals
-        pending_approvals_query = await db.execute(
-            select(func.count(RecoveryAction.id)).where(
+        pending_approvals_stmt = (
+            select(func.count(RecoveryAction.id))
+            .join(Transaction, Transaction.id == RecoveryAction.transaction_id)
+            .where(
                 RecoveryAction.policy_decision == "HUMAN_APPROVAL_REQUIRED",
                 RecoveryAction.status == "pending",
             )
         )
+        if merchant_id:
+            pending_approvals_stmt = pending_approvals_stmt.where(Transaction.merchant_id == merchant_id)
+        pending_approvals_query = await db.execute(pending_approvals_stmt)
         pending_approvals = int(pending_approvals_query.scalar() or 0)
 
         # 5. Total transactions analyzed
-        total_txns_query = await db.execute(select(func.count(Transaction.id)))
+        total_txns_stmt = select(func.count(Transaction.id))
+        if merchant_id:
+            total_txns_stmt = total_txns_stmt.where(Transaction.merchant_id == merchant_id)
+        total_txns_query = await db.execute(total_txns_stmt)
         total_txns = int(total_txns_query.scalar() or 0)
 
         # 6. Overall Recovery Rate
@@ -94,7 +103,10 @@ class DashboardService:
             ]
 
         # 8. Real 7-day Historical Trend from Database Timestamps
-        max_time_query = await db.execute(select(func.max(Transaction.created_at)))
+        max_time_stmt = select(func.max(Transaction.created_at))
+        if merchant_id:
+            max_time_stmt = max_time_stmt.where(Transaction.merchant_id == merchant_id)
+        max_time_query = await db.execute(max_time_stmt)
         anchor_time = max_time_query.scalar() or datetime.utcnow()
 
         trend: List[RecoveryTrendPoint] = []
@@ -105,15 +117,17 @@ class DashboardService:
             day_label = day_start.strftime("%a")
 
             # Day's at-risk transactions
+            failed_conditions = [
+                Transaction.created_at >= day_start,
+                Transaction.created_at < day_end,
+                Transaction.status.in_(["failed", "abandoned", "pending"]),
+            ]
+            if merchant_id:
+                failed_conditions.append(Transaction.merchant_id == merchant_id)
+
             day_failed_query = await db.execute(
                 select(Transaction.amount, Transaction.failure_reason, Transaction.payment_method, Transaction.attempt_number)
-                .where(
-                    and_(
-                        Transaction.created_at >= day_start,
-                        Transaction.created_at < day_end,
-                        Transaction.status.in_(["failed", "abandoned", "pending"]),
-                    )
-                )
+                .where(and_(*failed_conditions))
             )
             failed_rows = day_failed_query.all()
             day_risk_amount = 0.0
@@ -127,15 +141,17 @@ class DashboardService:
                 day_risk_amount += r.amount * l_prob
 
             # Day's recovered transactions
+            recov_conditions = [
+                Transaction.created_at >= day_start,
+                Transaction.created_at < day_end,
+                Transaction.status == "recovered",
+            ]
+            if merchant_id:
+                recov_conditions.append(Transaction.merchant_id == merchant_id)
+
             day_recov_query = await db.execute(
                 select(func.coalesce(func.sum(Transaction.amount), 0.0))
-                .where(
-                    and_(
-                        Transaction.created_at >= day_start,
-                        Transaction.created_at < day_end,
-                        Transaction.status == "recovered",
-                    )
-                )
+                .where(and_(*recov_conditions))
             )
             day_recovered = float(day_recov_query.scalar() or 0.0)
 
@@ -152,15 +168,18 @@ class DashboardService:
             )
 
         # 9. Recent AI Queue items from real DB
-        recent_queue_query = await db.execute(
+        recent_queue_stmt = (
             select(Transaction, Customer, RevenueRisk, RecoveryAction)
             .join(Customer, Customer.id == Transaction.customer_id)
             .outerjoin(RevenueRisk, RevenueRisk.transaction_id == Transaction.id)
             .outerjoin(RecoveryAction, RecoveryAction.transaction_id == Transaction.id)
             .where(Transaction.status.in_(["failed", "abandoned", "pending", "recovered"]))
-            .order_by(desc(Transaction.created_at))
-            .limit(8)
         )
+        if merchant_id:
+            recent_queue_stmt = recent_queue_stmt.where(Transaction.merchant_id == merchant_id)
+
+        recent_queue_stmt = recent_queue_stmt.order_by(desc(Transaction.created_at)).limit(8)
+        recent_queue_query = await db.execute(recent_queue_stmt)
         rows = recent_queue_query.all()
 
         queue_items: List[AIQueueItem] = []

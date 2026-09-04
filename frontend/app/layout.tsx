@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
+import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
   title: "RazorRecover AI | Autonomous Merchant Revenue Recovery",
@@ -16,8 +17,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-[#f8fafc] text-slate-900 antialiased font-sans">
-        <AppShell>{children}</AppShell>
+        <AuthProvider>
+          <AppShell>{children}</AppShell>
+        </AuthProvider>
       </body>
     </html>
   );
 }
+

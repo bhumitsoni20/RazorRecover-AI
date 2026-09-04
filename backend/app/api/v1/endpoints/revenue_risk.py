@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, Query, HTTPException, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from app.core.database import get_db
+from app.core.auth import get_current_verified_merchant
+from app.models.merchant import Merchant
 from app.models.revenue_risk import RevenueRisk
 from app.models.transaction import Transaction
 from app.models.customer import Customer
@@ -24,12 +26,15 @@ router = APIRouter()
 
 @router.get("", response_model=APIResponse[RevenueRiskSummaryResponse])
 @router.get("/summary", response_model=APIResponse[RevenueRiskSummaryResponse])
-async def get_revenue_risk_summary(db: AsyncSession = Depends(get_db)):
+async def get_revenue_risk_summary(
+    current_merchant: Merchant = Depends(get_current_verified_merchant),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Primary Phase 4 Revenue at Risk Summary Endpoint.
-    Returns aggregated revenue at risk, average loss probability, leakage sources, and active anomaly alerts.
+    Returns aggregated revenue at risk strictly isolated for the authenticated verified merchant.
     """
-    summary = await RevenueRiskService.get_revenue_risk_summary(db)
+    summary = await RevenueRiskService.get_revenue_risk_summary(db=db, merchant_id=current_merchant.id)
     return APIResponse(success=True, data=summary)
 
 
@@ -38,14 +43,15 @@ async def get_transaction_risks(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     risk_level: Optional[str] = Query(None, description="Filter by risk level: LOW, MEDIUM, HIGH, CRITICAL"),
+    current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Transaction-level risk scoring endpoint.
-    Exposes individual transaction loss probabilities, expected loss amounts, risk levels, and explainable reasons.
+    Transaction-level risk scoring endpoint scoped to authenticated merchant.
     """
     result = await RevenueRiskService.get_transaction_risks(
         db=db,
+        merchant_id=current_merchant.id,
         page=page,
         limit=limit,
         risk_level_filter=risk_level,
@@ -54,7 +60,10 @@ async def get_transaction_risks(
 
 
 @router.get("/items", response_model=APIResponse[List[RevenueRiskItem]])
-async def list_legacy_revenue_risks(db: AsyncSession = Depends(get_db)):
+async def list_legacy_revenue_risks(
+    current_merchant: Merchant = Depends(get_current_verified_merchant),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Legacy items endpoint for backward compatibility with existing components.
     """
@@ -62,6 +71,7 @@ async def list_legacy_revenue_risks(db: AsyncSession = Depends(get_db)):
         select(RevenueRisk, Transaction, Customer)
         .join(Transaction, Transaction.id == RevenueRisk.transaction_id)
         .join(Customer, Customer.id == Transaction.customer_id)
+        .where(Transaction.merchant_id == current_merchant.id)
         .order_by(desc(RevenueRisk.created_at))
         .limit(50)
     )
@@ -86,21 +96,24 @@ async def list_legacy_revenue_risks(db: AsyncSession = Depends(get_db)):
                 created_at=risk.created_at.strftime("%Y-%m-%d %H:%M:%S") if risk.created_at else "",
             )
         )
+    return APIResponse(success=True, data=items)
 
 
 @router.get("/transactions/{transaction_id}/root-cause", response_model=APIResponse[RootCauseAnalysis])
 async def get_transaction_root_cause(
     transaction_id: str = Path(..., description="Transaction ID to analyze"),
+    current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Phase 5 — Root Cause Agent Endpoint.
     Collects real transaction signals & Phase 4 anomaly telemetry and executes Gemini 2.5 Flash diagnosis.
+    Enforces merchant data isolation.
     """
     query = (
         select(Transaction, Customer)
         .outerjoin(Customer, Customer.id == Transaction.customer_id)
-        .where(Transaction.id == transaction_id)
+        .where(Transaction.id == transaction_id, Transaction.merchant_id == current_merchant.id)
     )
     res = (await db.execute(query)).first()
     if not res:
@@ -145,16 +158,18 @@ async def get_transaction_root_cause(
 @router.get("/transactions/{transaction_id}/policy-context", response_model=APIResponse[PolicyContextResponse])
 async def get_transaction_policy_context(
     transaction_id: str = Path(..., description="Transaction ID for RAG retrieval"),
+    current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Phase 6 — RAG Policy Context Endpoint.
     Retrieves matching sections from merchant_policy.md and generates policy-grounded interpretation.
+    Enforces merchant data isolation.
     """
     query = (
         select(Transaction, Customer)
         .outerjoin(Customer, Customer.id == Transaction.customer_id)
-        .where(Transaction.id == transaction_id)
+        .where(Transaction.id == transaction_id, Transaction.merchant_id == current_merchant.id)
     )
     res = (await db.execute(query)).first()
     if not res:

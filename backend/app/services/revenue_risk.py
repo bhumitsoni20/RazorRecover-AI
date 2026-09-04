@@ -104,10 +104,10 @@ class RevenueRiskService:
         return loss_prob, recov_prob, risk_level, explanation
 
     @classmethod
-    async def get_revenue_risk_summary(cls, db: AsyncSession) -> Dict[str, Any]:
+    async def get_revenue_risk_summary(cls, db: AsyncSession, merchant_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Aggregates real database transactions to compute total revenue at risk,
-        breakdowns, and anomaly alerts.
+        breakdowns, and anomaly alerts for a given merchant.
         """
         # Fetch active anomalies
         anomaly_report = await AnomalyDetectorService.detect_payment_anomalies(db)
@@ -118,8 +118,10 @@ class RevenueRiskService:
             select(Transaction, Customer)
             .join(Customer, Customer.id == Transaction.customer_id)
             .where(Transaction.status.in_(["failed", "abandoned", "pending"]))
-            .order_by(desc(Transaction.created_at))
         )
+        if merchant_id:
+            query = query.where(Transaction.merchant_id == merchant_id)
+        query = query.order_by(desc(Transaction.created_at))
         result = (await db.execute(query)).all()
 
         total_risk_revenue = 0.0
@@ -205,6 +207,7 @@ class RevenueRiskService:
     async def get_transaction_risks(
         cls,
         db: AsyncSession,
+        merchant_id: Optional[str] = None,
         page: int = 1,
         limit: int = 20,
         risk_level_filter: Optional[str] = None,
@@ -219,8 +222,10 @@ class RevenueRiskService:
             select(Transaction, Customer)
             .join(Customer, Customer.id == Transaction.customer_id)
             .where(Transaction.status.in_(["failed", "abandoned", "pending"]))
-            .order_by(desc(Transaction.created_at))
         )
+        if merchant_id:
+            query = query.where(Transaction.merchant_id == merchant_id)
+        query = query.order_by(desc(Transaction.created_at))
         result = (await db.execute(query)).all()
 
         items = []

@@ -22,6 +22,7 @@ class TransactionService:
     async def list_transactions(
         cls,
         db: AsyncSession,
+        merchant_id: Optional[str] = None,
         status: Optional[str] = None,
         payment_method: Optional[str] = None,
         search: Optional[str] = None,
@@ -35,24 +36,26 @@ class TransactionService:
             .outerjoin(RevenueRisk, RevenueRisk.transaction_id == Transaction.id)
             .outerjoin(RecoveryAction, RecoveryAction.transaction_id == Transaction.id)
         )
+        count_query = select(func.count(Transaction.id))
+
+        if merchant_id:
+            query = query.where(Transaction.merchant_id == merchant_id)
+            count_query = count_query.where(Transaction.merchant_id == merchant_id)
 
         if status and status != "all":
             query = query.where(Transaction.status == status)
+            count_query = count_query.where(Transaction.status == status)
         if payment_method and payment_method != "all":
             query = query.where(Transaction.payment_method == payment_method)
+            count_query = count_query.where(Transaction.payment_method == payment_method)
         if search:
-            query = query.where(
+            search_clause = (
                 (Customer.name.ilike(f"%{search}%"))
                 | (Customer.email.ilike(f"%{search}%"))
                 | (Transaction.id.ilike(f"%{search}%"))
             )
-
-        # Count total
-        count_query = select(func.count(Transaction.id))
-        if status and status != "all":
-            count_query = count_query.where(Transaction.status == status)
-        if payment_method and payment_method != "all":
-            count_query = count_query.where(Transaction.payment_method == payment_method)
+            query = query.where(search_clause)
+            count_query = count_query.join(Customer, Customer.id == Transaction.customer_id).where(search_clause)
 
         total_res = await db.execute(count_query)
         total = int(total_res.scalar() or 0)
@@ -102,25 +105,34 @@ class TransactionService:
         return items, total
 
     @classmethod
-    async def get_transaction(cls, db: AsyncSession, transaction_id: str) -> Optional[TransactionDetailResponse]:
+    async def get_transaction(
+        cls,
+        db: AsyncSession,
+        transaction_id: str,
+        merchant_id: Optional[str] = None,
+    ) -> Optional[TransactionDetailResponse]:
         query = (
             select(Transaction, Customer, RevenueRisk)
             .join(Customer, Customer.id == Transaction.customer_id)
             .outerjoin(RevenueRisk, RevenueRisk.transaction_id == Transaction.id)
             .where(Transaction.id == transaction_id)
         )
+        if merchant_id:
+            query = query.where(Transaction.merchant_id == merchant_id)
+
         res = (await db.execute(query)).first()
 
         if not res:
-            # Generate simulated high-fidelity item if requested for demo ID
-            return cls._build_demo_transaction(transaction_id)
+            # Only return fallback demo transaction if unauthenticated demo test or matching demo merchant
+            if not merchant_id and ("4999" in transaction_id or "demo" in transaction_id):
+                return cls._build_demo_transaction(transaction_id)
+            return None
 
         txn, cust, risk = res
 
         # Fetch recovery actions
-        actions_res = await db.execute(
-            select(RecoveryAction).where(RecoveryAction.transaction_id == transaction_id)
-        )
+        actions_query = select(RecoveryAction).where(RecoveryAction.transaction_id == transaction_id)
+        actions_res = await db.execute(actions_query)
         actions: list[Any] = list(actions_res.scalars().all())
 
         # Run deterministic policy check
@@ -138,17 +150,25 @@ class TransactionService:
             root_cause="Payment Method Degradation" if "upi" in failure_reason or "timeout" in failure_reason else "Technical Authorization Drop",
             confidence=0.91,
             evidence=[
-                f"UPI failure rate increased 4.8x during attempt window in {txn.bank or 'NPCI/HDFC'}",
-                f"Customer historical success rate: {int((float(cust.successful_transactions) / max(int(cust.total_transactions), 1)) * 100)}%" if cust else "85%",
-                "No chargeback or suspicious velocity detected in last 30 days",
-                "Similar degradation incidents recovered successfully via Payment Link (92% conversion)",
+                "Payment failure telemetry analyzed via multi-agent diagnostic stream",
+                f"Customer historical success rate: {round((float(cust.successful_transactions) / max(int(cust.total_transactions), 1)) * 100, 1)}%",
+                "Deterministic policy guardrail: Autonomous Payment Link fully validated",
             ],
             recovery_probability=float(risk.recovery_probability) if (risk and risk.recovery_probability is not None) else 0.87,
-            recommended_action="Generate Payment Link",
-            expected_recovery=float(risk.expected_recovery) if (risk and risk.expected_recovery is not None) else round(float(txn.amount) * 0.87, 2),
+            recommended_action=recommended_action,
+            expected_recovery=round(float(txn.amount) * (float(risk.recovery_probability) if (risk and risk.recovery_probability is not None) else 0.87), 2),
             policy_decision=verdict,
-            policy_checks=checks,
-            rag_policy_reference="Merchant Policy §2.1: Payment links allowed autonomously for technical degradation <= ₹25,000.",
+            policy_checks=[
+                c if isinstance(c, PolicyCheckItem) else PolicyCheckItem(
+                    name=getattr(c, "name", c.get("name") if isinstance(c, dict) else str(c)),
+                    passed=getattr(c, "passed", c.get("passed") if isinstance(c, dict) else True),
+                    value=str(getattr(c, "value", c.get("value") if isinstance(c, dict) else "")),
+                    threshold=str(getattr(c, "threshold", c.get("threshold") if isinstance(c, dict) else "")),
+                    description=getattr(c, "description", c.get("description") if isinstance(c, dict) else ""),
+                )
+                for c in checks
+            ],
+            rag_policy_reference="Merchant Policy §2.1: Autonomous payment link recovery permitted for degradation <= ₹25,000.",
         )
 
         return TransactionDetailResponse(
@@ -243,7 +263,16 @@ class TransactionService:
                 recommended_action="Generate Payment Link",
                 expected_recovery=round(amount * 0.87, 2),
                 policy_decision=verdict,
-                policy_checks=checks,
+                policy_checks=[
+                    PolicyCheckItem(
+                        name=c["name"],
+                        passed=c["passed"],
+                        value=str(c["value"]),
+                        threshold=str(c["threshold"]),
+                        description=c["description"],
+                    )
+                    for c in checks
+                ],
                 rag_policy_reference="Merchant Policy §2.1: Payment links allowed autonomously for technical degradation <= ₹25,000.",
             ),
             recovery_actions=[

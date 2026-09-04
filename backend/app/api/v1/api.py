@@ -1,5 +1,8 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (
+    auth,
+    onboarding,
+    dev,
     dashboard,
     transactions,
     revenue_risk,
@@ -12,6 +15,9 @@ from app.api.v1.endpoints import (
 
 api_router = APIRouter()
 
+api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(onboarding.router, prefix="/onboarding", tags=["Merchant Onboarding"])
+api_router.include_router(dev.router, prefix="/dev", tags=["Development Tools"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 api_router.include_router(transactions.router, prefix="/transactions", tags=["Transactions"])
 api_router.include_router(revenue_risk.router, prefix="/revenue-risk", tags=["Revenue Risk"])

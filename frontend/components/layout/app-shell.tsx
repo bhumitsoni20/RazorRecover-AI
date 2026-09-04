@@ -2,13 +2,30 @@
 
 import * as React from "react";
 import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import { Sidebar } from "./sidebar";
 import { Navbar } from "./navbar";
+import { Loader2 } from "lucide-react";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
+  const rawPathname = usePathname();
+  const pathname = rawPathname || "";
+  const router = useRouter();
+  const { user, loading } = useAuth();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Route classifications
+  const isAuthPage = pathname === "/login" || pathname === "/signup";
+  const isPublicPaymentPage = pathname.startsWith("/pay");
+  const isOnboardingPage =
+    pathname === "/onboarding/razorpay" || pathname === "/verification-pending";
+  const isExempt = isAuthPage || isPublicPaymentPage || isOnboardingPage;
 
   // Close mobile sidebar automatically on navigation
   useEffect(() => {
@@ -26,6 +43,82 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Route Gating & Protection
+  useEffect(() => {
+    if (!mounted || loading) return;
+
+    // 1. If on login/signup but user is already logged in
+    if (isAuthPage && user) {
+      if (user.verification_status === "VERIFIED") {
+        router.replace("/dashboard");
+      } else {
+        router.replace("/verification-pending");
+      }
+      return;
+    }
+
+    // 2. If on protected route (dashboard, transactions, etc.)
+    if (!isExempt) {
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+      if (user.verification_status !== "VERIFIED") {
+        router.replace("/verification-pending");
+        return;
+      }
+    }
+
+    // 3. If on onboarding/pending page but not logged in
+    if (isOnboardingPage && !user) {
+      router.replace("/login");
+      return;
+    }
+  }, [mounted, user, loading, pathname, isAuthPage, isExempt, isOnboardingPage, router]);
+
+  // Public checkout pages (customers paying recovery links) - always render immediately
+  if (isPublicPaymentPage) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex flex-col justify-center">
+        {children}
+      </div>
+    );
+  }
+
+  // Auth pages & onboarding pages
+  if (isAuthPage || isOnboardingPage) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex flex-col justify-center">
+        {children}
+      </div>
+    );
+  }
+
+  // Before mounting or while initial auth session is loading on protected routes
+  if (!mounted || loading) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center space-y-3">
+        <Loader2 className="h-8 w-8 animate-spin text-[#0052cc]" />
+        <p className="text-xs font-semibold text-slate-500">
+          Loading merchant workspace...
+        </p>
+      </div>
+    );
+  }
+
+  // If unauthenticated or unverified on protected route, show redirect indicator
+  if (!user || user.verification_status !== "VERIFIED") {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center space-y-3">
+        <Loader2 className="h-8 w-8 animate-spin text-[#0052cc]" />
+        <p className="text-xs font-semibold text-slate-500">
+          Redirecting to authorized route...
+        </p>
+      </div>
+    );
+  }
+
+  // Verified Merchant Main Application Layout
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col">
       {/* Mobile Backdrop Overlay */}

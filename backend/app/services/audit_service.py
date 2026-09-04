@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -8,7 +8,7 @@ from app.schemas.audit import AuditLogItem
 
 class AuditService:
     @classmethod
-    async def record_audit_event(
+    async def record_event(
         cls,
         db: AsyncSession,
         agent_name: str,
@@ -19,14 +19,17 @@ class AuditService:
         input_data: Optional[Dict[str, Any]] = None,
         output_data: Optional[Dict[str, Any]] = None,
         policy_result: Optional[str] = None,
+        merchant_id: Optional[str] = None,
     ) -> AuditLog:
         """
         Appends an immutable audit log entry into the cryptographic hash chain.
         """
         # Fetch the most recent audit entry to get previous_hash
-        latest_entry_res = await db.execute(
-            select(AuditLog).order_by(desc(AuditLog.created_at)).limit(1)
-        )
+        query = select(AuditLog).order_by(desc(AuditLog.created_at)).limit(1)
+        if merchant_id:
+            query = select(AuditLog).where(AuditLog.merchant_id == merchant_id).order_by(desc(AuditLog.created_at)).limit(1)
+
+        latest_entry_res = await db.execute(query)
         latest_entry = latest_entry_res.scalar_one_or_none()
         previous_hash = latest_entry.event_hash if latest_entry else ("0" * 64)
 
@@ -43,10 +46,12 @@ class AuditService:
             policy_result=policy_result,
             previous_hash=previous_hash,
             created_at_str=created_at_str,
+            merchant_id=merchant_id,
         )
 
         entry = AuditLog(
             id=temp_id,
+            merchant_id=merchant_id,
             transaction_id=transaction_id,
             agent_name=agent_name,
             actor=actor,
@@ -63,15 +68,21 @@ class AuditService:
         await db.commit()
         return entry
 
+    # Alias for backward compatibility
+    record_audit_event = record_event
+
     @classmethod
     async def list_audit_logs(
         cls,
         db: AsyncSession,
+        merchant_id: Optional[str] = None,
         agent_name: Optional[str] = None,
         transaction_id: Optional[str] = None,
         limit: int = 50,
     ) -> List[AuditLogItem]:
         query = select(AuditLog)
+        if merchant_id:
+            query = query.where(AuditLog.merchant_id == merchant_id)
         if agent_name and agent_name != "all":
             query = query.where(AuditLog.agent_name == agent_name)
         if transaction_id:
@@ -90,7 +101,7 @@ class AuditService:
                 input_data=log.input_data,
                 output_data=log.output_data,
                 policy_result=log.policy_result,
-                created_at=log.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                created_at=log.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(log.created_at, "strftime") else str(log.created_at),
             )
             for log in results
         ]
@@ -98,11 +109,14 @@ class AuditService:
         return items
 
     @classmethod
-    async def verify_audit_chain(cls, db: AsyncSession) -> Dict[str, Any]:
+    async def verify_audit_chain(cls, db: AsyncSession, merchant_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Cryptographically verifies the continuity and immutability of the entire audit log hash chain.
+        Cryptographically verifies the continuity and immutability of the audit log hash chain.
         """
-        query = select(AuditLog).order_by(AuditLog.created_at.asc())
+        query = select(AuditLog)
+        if merchant_id:
+            query = query.where(AuditLog.merchant_id == merchant_id)
+        query = query.order_by(AuditLog.created_at.asc())
         results = (await db.execute(query)).scalars().all()
 
         if not results:
@@ -129,6 +143,7 @@ class AuditService:
                 policy_result=entry.policy_result,
                 previous_hash=entry.previous_hash,
                 created_at_str=entry.created_at.isoformat(),
+                merchant_id=entry.merchant_id,
             )
             if recalc != entry.event_hash:
                 return {

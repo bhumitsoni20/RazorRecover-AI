@@ -62,6 +62,24 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "demo_secret_key_67890")
     RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "demo_webhook_secret_abc")
 
+    # Authentication & JWT Security
+    AUTH_SECRET: str = os.getenv("AUTH_SECRET", "super-secret-auth-key-change-in-production-razorrecover-2026")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+    COOKIE_NAME: str = "access_token"
+
+    # Initial Admin Seed Credentials
+    INITIAL_ADMIN_EMAIL: str = os.getenv("INITIAL_ADMIN_EMAIL", "admin@razorrecover.ai")
+    INITIAL_ADMIN_PASSWORD: str = os.getenv("INITIAL_ADMIN_PASSWORD", "Admin@RazorRecover2026!")
+
+    # Demo Merchant 1 (Verified)
+    DEMO_MERCHANT_1_EMAIL: str = os.getenv("DEMO_MERCHANT_1_EMAIL", "merchant1@demo.razorrecover.ai")
+    DEMO_MERCHANT_1_PASSWORD: str = os.getenv("DEMO_MERCHANT_1_PASSWORD", "DemoMerchant123!")
+
+    # Demo Merchant 2 (Pending Verification)
+    DEMO_MERCHANT_2_EMAIL: str = os.getenv("DEMO_MERCHANT_2_EMAIL", "merchant2@demo.razorrecover.ai")
+    DEMO_MERCHANT_2_PASSWORD: str = os.getenv("DEMO_MERCHANT_2_PASSWORD", "DemoMerchant123!")
+
+
     # Recovery Engine Thresholds
     MAX_AUTONOMOUS_AMOUNT: float = 25000.0  # Actions > ₹25k require human approval
     MAX_AUTONOMOUS_RETRIES: int = 2

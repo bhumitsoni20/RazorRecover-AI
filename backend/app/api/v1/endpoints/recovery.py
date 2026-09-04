@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, Query, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from app.core.database import get_db
+from app.core.auth import get_current_verified_merchant
+from app.models.merchant import Merchant
 from app.models.recovery_action import RecoveryAction
 from app.models.transaction import Transaction
 from app.models.customer import Customer
@@ -26,12 +28,14 @@ router = APIRouter()
 async def list_recovery_actions(
     status: Optional[str] = Query(None),
     policy_decision: Optional[str] = Query(None),
+    current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
 ):
     query = (
         select(RecoveryAction, Transaction, Customer)
         .join(Transaction, Transaction.id == RecoveryAction.transaction_id)
         .join(Customer, Customer.id == Transaction.customer_id)
+        .where(Transaction.merchant_id == current_merchant.id)
     )
 
     if status and status != "all":
@@ -69,8 +73,8 @@ async def list_recovery_actions(
                 status=action.status,
                 amount_recovered=action.amount_recovered,
                 external_reference=action.external_reference,
-                created_at=action.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                completed_at=action.completed_at.strftime("%Y-%m-%d %H:%M:%S") if action.completed_at else None,
+                created_at=action.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(action.created_at, "strftime") else str(action.created_at),
+                completed_at=action.completed_at.strftime("%Y-%m-%d %H:%M:%S") if (action.completed_at and hasattr(action.completed_at, "strftime")) else (str(action.completed_at) if action.completed_at else None),
             )
         )
 
@@ -81,6 +85,7 @@ async def list_recovery_actions(
 @router.get("/{transaction_id}", response_model=APIResponse[Dict[str, Any]])
 async def get_recovery_status(
     transaction_id: str = Path(...),
+    current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
 ):
     result = await RecoveryService.get_recovery_status(db=db, transaction_id=transaction_id)
@@ -92,6 +97,7 @@ async def get_recovery_status(
 async def analyze_transaction(
     transaction_id: Optional[str] = None,
     request: AnalyzeRequest = AnalyzeRequest(),
+    current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
 ):
     target_id = transaction_id or getattr(request, "transaction_id", None) or "txn_4999_upi"
@@ -104,6 +110,7 @@ async def analyze_transaction(
 async def execute_recovery(
     transaction_id: Optional[str] = None,
     request: ExecuteRequest = ExecuteRequest(),
+    current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
 ):
     target_id = transaction_id or getattr(request, "transaction_id", None) or "txn_4999_upi"
@@ -121,6 +128,7 @@ async def execute_recovery(
 async def approve_recovery(
     transaction_id: Optional[str] = None,
     request: ApproveRequest = ApproveRequest(),
+    current_merchant: Merchant = Depends(get_current_verified_merchant),
     db: AsyncSession = Depends(get_db),
 ):
     target_id = transaction_id or getattr(request, "transaction_id", None) or "txn_4999_upi"
@@ -128,7 +136,7 @@ async def approve_recovery(
         db=db,
         transaction_id=target_id,
         approved=request.approved,
-        approver_note=request.approver_note or "Approved by Merchant Admin",
+        approver_note=request.approver_note or f"Approved by {current_merchant.business_name}",
     )
     return APIResponse(success=True, data=result)
 
@@ -138,6 +146,9 @@ async def create_razorpay_order(
     transaction_id: str = Path(...),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Public checkout order helper used by customer payment page (/pay/[id]).
+    """
     txn_res = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
     txn = txn_res.scalars().first()
     raw_amount = getattr(txn, "amount", None)
